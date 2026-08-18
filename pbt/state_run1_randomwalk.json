@@ -1,0 +1,384 @@
+{
+ "round": 10,
+ "streak": 5,
+ "opponent_pool": [
+  {
+   "id": "ref_A",
+   "ref": "kaggriculture-multi-route-farming-agent",
+   "path": null,
+   "score_history": [],
+   "generation": 0
+  },
+  {
+   "id": "ref_B",
+   "ref": "kaggriculture-3000-socre",
+   "path": null,
+   "score_history": [],
+   "generation": 0
+  },
+  {
+   "id": "ref_C",
+   "ref": "kaggriculture-rank-your-agent",
+   "path": null,
+   "score_history": [],
+   "generation": 0
+  },
+  {
+   "id": "ref_D",
+   "ref": "kaggriculture-ttv1",
+   "path": null,
+   "score_history": [],
+   "generation": 0
+  },
+  {
+   "id": "ref_E",
+   "ref": "v111-8c4s-economic-core-premium-lead",
+   "path": null,
+   "score_history": [],
+   "generation": 0
+  },
+  {
+   "id": "ref_F",
+   "ref": "ref-pipeline-highscore",
+   "path": null,
+   "score_history": [],
+   "generation": 0
+  },
+  {
+   "id": "r2_v7",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round2.py",
+   "score_history": [
+    95311.5
+   ],
+   "generation": 2
+  },
+  {
+   "id": "r3_v5",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round3.py",
+   "score_history": [
+    94883.33333333333
+   ],
+   "generation": 3
+  },
+  {
+   "id": "r4_v4",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round4.py",
+   "score_history": [
+    85718.25
+   ],
+   "generation": 4
+  },
+  {
+   "id": "r5_v5",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round5.py",
+   "score_history": [
+    102482.66666666667
+   ],
+   "generation": 5
+  },
+  {
+   "id": "r6_v5",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round6.py",
+   "score_history": [
+    102489.5
+   ],
+   "generation": 6
+  },
+  {
+   "id": "r7_v8",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round7.py",
+   "score_history": [
+    102460.0
+   ],
+   "generation": 7
+  },
+  {
+   "id": "r8_v5",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round8.py",
+   "score_history": [
+    102363.83333333333
+   ],
+   "generation": 8
+  },
+  {
+   "id": "r9_v3",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round9.py",
+   "score_history": [
+    100241.16666666667
+   ],
+   "generation": 9
+  },
+  {
+   "id": "r10_v8",
+   "ref": null,
+   "path": "/home/yilewang/kaggriculture/agents/champion_round10.py",
+   "score_history": [
+    101474.41666666667
+   ],
+   "generation": 10
+  }
+ ],
+ "gene_pool": [
+  {
+   "id": "ref_A",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 1.0,
+    "_PREEMPT_MAX_BATCH": 30,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 6,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.25
+   },
+   "rank": 1.0,
+   "generation": 0
+  },
+  {
+   "id": "r1_v3",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.9166,
+    "_PREEMPT_MAX_BATCH": 47,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 6,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.25
+   },
+   "rank": 1,
+   "generation": 1
+  },
+  {
+   "id": "r2_v7",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.9166,
+    "_PREEMPT_MAX_BATCH": 47,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 6,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.001
+   },
+   "rank": 1,
+   "generation": 2
+  },
+  {
+   "id": "r3_v5",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.9166,
+    "_PREEMPT_MAX_BATCH": 47,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 40,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.25
+   },
+   "rank": 1,
+   "generation": 3
+  },
+  {
+   "id": "r4_v4",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.9166,
+    "_PREEMPT_MAX_BATCH": 32,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 6,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.25,
+    "FORCE_ROUTE": "6c8s_3q"
+   },
+   "rank": 1,
+   "generation": 4
+  },
+  {
+   "id": "r5_v5",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.9166,
+    "_PREEMPT_MAX_BATCH": 32,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 40,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.25
+   },
+   "rank": 1,
+   "generation": 5
+  },
+  {
+   "id": "r6_v5",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.9166,
+    "_PREEMPT_MAX_BATCH": 47,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 40,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.001
+   },
+   "rank": 1,
+   "generation": 6
+  },
+  {
+   "id": "r7_v8",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.9318,
+    "_PREEMPT_MAX_BATCH": 48,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 7,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0904,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 127,
+    "_PREEMPT_STOP": 694,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.0422
+   },
+   "rank": 1,
+   "generation": 7
+  },
+  {
+   "id": "r8_v5",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.9166,
+    "_PREEMPT_MAX_BATCH": 47,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 40,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.25
+   },
+   "rank": 1,
+   "generation": 8
+  },
+  {
+   "id": "r9_v3",
+   "genome": {
+    "_PREEMPT_ENABLED": true,
+    "_PREEMPT_FRACTION": 2.5271,
+    "_PREEMPT_MAX_BATCH": 37,
+    "_PREEMPT_MAX_CLONE_DISTANCE": 40,
+    "_PREEMPT_MIN_PRICE_RATIO": 0.0,
+    "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+    "_PREEMPT_START": 120,
+    "_PREEMPT_STOP": 680,
+    "_WEED_REPLAY_STEPS": 8,
+    "_DEMAND_ALPHA": 0.25
+   },
+   "rank": 2,
+   "generation": 9
+  }
+ ],
+ "history": [
+  {
+   "round": 1,
+   "champion": "v3",
+   "rank": 1,
+   "income": 78888.83333333333,
+   "note": "v3 allocation: preempt batch and fraction jittered",
+   "streak": 1
+  },
+  {
+   "round": 2,
+   "champion": "v7",
+   "rank": 1,
+   "income": 95311.5,
+   "note": "v7 learning rate: _DEMAND_ALPHA -> 0.001",
+   "streak": 2
+  },
+  {
+   "round": 3,
+   "champion": "v5",
+   "rank": 1,
+   "income": 94883.33333333333,
+   "note": "v5 module swap: preempt against any opponent, not only clones",
+   "streak": 3
+  },
+  {
+   "round": 4,
+   "champion": "v4",
+   "rank": 1,
+   "income": 85718.25,
+   "note": "v4 mixed: tape 6c8s_3q + batch change",
+   "streak": 4
+  },
+  {
+   "round": 5,
+   "champion": "v5",
+   "rank": 1,
+   "income": 102482.66666666667,
+   "note": "v5 module swap: preempt against any opponent, not only clones",
+   "streak": 5
+  },
+  {
+   "round": 6,
+   "champion": "v5",
+   "rank": 1,
+   "income": 102489.5,
+   "note": "v5 module swap: preempt against any opponent, not only clones",
+   "streak": 1
+  },
+  {
+   "round": 7,
+   "champion": "v8",
+   "rank": 1,
+   "income": 102460.0,
+   "note": "v8 noise: small gaussian on every constant",
+   "streak": 2
+  },
+  {
+   "round": 8,
+   "champion": "v5",
+   "rank": 1,
+   "income": 102363.83333333333,
+   "note": "v5 module swap: preempt against any opponent, not only clones",
+   "streak": 3
+  },
+  {
+   "round": 9,
+   "champion": "v3",
+   "rank": 2,
+   "income": 100241.16666666667,
+   "note": "v3 allocation: preempt batch and fraction jittered",
+   "streak": 4
+  },
+  {
+   "round": 10,
+   "champion": "v8",
+   "rank": 2,
+   "income": 101474.41666666667,
+   "note": "v8 noise: small gaussian on every constant",
+   "streak": 5
+  }
+ ]
+}

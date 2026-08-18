@@ -1,0 +1,20 @@
+# Ladder replays: ~30 MB each, hundreds of them, all re-downloadable with
+# `kaggle competitions replay <id>`. Never commit these.
+replays/
+*.replay.json
+episode-*-replay.json
+
+# Baked agent variants: every one is regenerable from route/bake.py with the
+# parameters recorded in HANDOFF.md, and together they run to tens of MB.
+agents/
+pool/*.py
+pool_invalid/
+
+# Search state and logs
+route/logs/
+logs/
+*.jsonl
+
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

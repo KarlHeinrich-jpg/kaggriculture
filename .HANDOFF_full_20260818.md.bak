@@ -1,0 +1,1068 @@
+# Kaggriculture — handoff
+
+> ## READ THIS FIRST — state as of 2026-08-18 evening
+>
+> **Ship this:** `submission/main.py` (155,302 bytes, stdlib-only, entry
+> `_submission_entry`). It is the public `multi-route-farming-agent` ("kawa")
+> tape, unmodified, plus one added layer: `pbt/intervene.py`, which dumps 80% of
+> held stock three turns ahead of the opponent's predicted sale. Worth **+1,611
+> paired margin over plain kawa, winning 39 of 40 paired seeds**. Real ladder
+> wins are decided by margins of +659 to +3,350, so this is the right order of
+> magnitude. **It has never been submitted.**
+>
+> **Both of the user's own submissions (2326.3 and 1898.5) are unmodified
+> kawa** — verified by extracting their tape from replays and matching it
+> frame-for-frame (section 28). There is no stronger private file to recover.
+>
+> ### Three rules that override anything written below
+>
+> 1. **Never score same-tape matchups by win rate.** An agent against a
+>    byte-identical copy of itself wins seat 0 only 15% of the time, on a mean
+>    margin of -$66. Use **paired margin**: play both seat orders per seed and
+>    sum. A true mirror then scores exactly 0. Section 24.
+> 2. **The tape cannot be edited.** Not the farm actions, not the hires, not
+>    even day 0's market line — every probe collapsed the run (-$107k to
+>    -$138k). It can only be replaced wholesale. Sections 18, 23.
+> 3. **Validate any submission by file path**, `env.run([path, opponent])`,
+>    never by import. Kaggle picks the last *newly defined* callable, and an
+>    appended layer that rebinds `agent` does not move it. Section 21.
+>
+> ### What was actually worth anything
+>
+> | change | paired margin vs kawa |
+> |---|---|
+> | every constant search in sections 13-23 | **~0 (retracted, section 26)** |
+> | market intervention, lead 1, dump 40% | +464 |
+> | + lead 3 and FERTILIZER | +1,212 |
+> | + dump 80% | **+1,611** |
+>
+> Sections 13, 15, 17 and 19 contain win-rate claims (notably "+17pp over the
+> published agent") that **section 26 retracts**. They measured the seat coin
+> flip. The sections are kept for the reasoning, not the numbers.
+>
+> ### Open thread
+>
+> kawa's tapes allocate **12 hand slots**; every ladder opponent runs **14**
+> (~22% less labour: 2,741 useful actions vs 3,494). That is the one quantified
+> structural gap left. `pbt/extract_tape.py` can already pull any player's
+> 719-step tape out of a replay and transplant it into kawa's runtime layer, so
+> the tooling for a tape swap exists — the tape does not.
+
+Written for a fresh session. Read this before touching anything.
+
+**Goal:** win a gold medal in the Kaggle *Kaggriculture* simulation competition
+(2-player turn-based farming, 720 turns, most money wins). Deadline
+2026-09-30 (submission), leaderboard finalises ~2026-10-15.
+
+**Where we actually stand:** our agent scores ~55k vs `starter`. The public
+reference agents the user supplied score **110k-121k**. Head to head we get
+about 26% of their bank. We are not competitive yet. One earlier version was
+submitted to the real ladder and scored **485.5** (1 win / 2 losses over three
+real games) — see "Submissions" below.
+
+---
+
+## 1. Environment / how to run things
+
+| what | where |
+|---|---|
+| project root | `/home/yilewang/kaggriculture` |
+| python | `/home/yilewang/kagg-env/bin/python` (venv, py3.14) |
+| engine | `kaggle_environments==1.32.7`, env name `kaggriculture` |
+| engine source (READ THIS) | `/home/yilewang/kagg-env/lib/python3.14/site-packages/kaggle_environments/envs/kaggriculture/kaggriculture.py` |
+| our agent | `agent/main.py` |
+| Kaggle CLI | `/home/yilewang/kagg-env/bin/kaggle`, token already at `~/.kaggle/access_token` |
+
+Machine: 26 physical cores (52 logical), 187 GB RAM, 4× RTX 3090 (**GPUs
+unused — this workload is CPU-bound single-threaded Python**).
+
+Run one game:
+```bash
+cd /home/yilewang/kaggriculture && /home/yilewang/kagg-env/bin/python -c "
+from kaggle_environments import make
+env = make('kaggriculture', configuration={'episodeSteps':720,'seed':11}, debug=True)
+env.run(['agent/main.py','starter']); print(env.steps[-1][0].reward)"
+```
+
+Run the parameter search:
+```bash
+cd /home/yilewang/kaggriculture && PYTHONUNBUFFERED=1 nohup \
+  /home/yilewang/kagg-env/bin/python -u -m search.ga_search \
+  --population 40 --generations 20000 --elite 6 --workers 26 \
+  --seed 2024 --time-budget 43200 > search/logs/run9.log 2>&1 &
+```
+**Always `--workers 26`, never 52** (see pitfall #1).
+
+---
+
+## 2. File map
+
+```
+STRATEGY.md                     game economics, derived from engine source (still valid)
+HANDOFF.md                      this file
+agent/main.py                   our agent (runtime planner)
+analysis/
+  market_capacity.py            per-product revenue ceilings
+  animal_economics.py           feeding/care schedules
+  portfolio_optimizer.py        greedy tile allocation, 1P and 2P shared-market
+  replay_intel.py               what real ladder opponents built
+  ref_schedule.py               decode a reference agent's action tape into a day-by-day schedule
+search/
+  ga_search.py                  (mu+lambda) evolution over agent hyperparameters
+  evaluate.py                   one candidate x matchup set; supports 4 opponent kinds
+  agent_instance.py             loads agent/main.py as an isolated module (needed for self-play)
+  make_sparring.py              ladder replay .json -> replay-playback opponent
+  build_submission.py           bake best genome into submission/main.py
+  validate.py                   larger-sample validation of a checkpoint
+  checkpoints/best_genome.json  current best (live, overwritten by the running search)
+sim/
+  diag_animal.py                animal pipeline day by day
+  diag_actions.py               per-unit action histogram + one-day trace
+  diag_efficiency.py            useful/move/idle split, ours vs a reference agent
+  diag_sales.py                 sales mix + land/hire profile, ours vs a reference
+opponents/                      reference agents + extractor (see section 4)
+
+route/                          the route-planning line (section 9) -- ABANDONED at 0/36,
+                                but opponent.py and bake.py are still load-bearing
+  geom.py, router.py, agent.py  own-plan architecture; lost every game, kept for the record
+  opponent.py                   EXACT opponent-sales inference; still used by the shipped agent
+  bake.py                       builds submission/main.py: base tape + appended layers
+  tournament.py, batch.py       evaluation harnesses
+pbt/
+  intervene.py                  THE market-intervention layer that is the entire real edge
+  extract_tape.py               pull a 719-step tape out of a replay, transplant into kawa
+  tapesel.py                    searchable tape-selection rule (searched; default optimal)
+  tape_edit.py                  day-0 market editor (proved the tape is not editable)
+  features.py, cluster.py       6-dim opponent features + K-Means (built; no signal found)
+  adaptive.py, adversary.py     per-family counter params (built; tied with plain best)
+  pool.py, variants.py, train.py  population-based training (random walk, section 14)
+replays/                        downloaded ladder replays (30MB each)
+agents/                         every baked variant from every experiment
+submission/main.py              THE FILE TO SUBMIT
+```
+
+Rebuild the submission at any time:
+```bash
+cd /home/yilewang/kaggriculture && /home/yilewang/kagg-env/bin/python -c "
+import sys; sys.path.insert(0,'.')
+from route.bake import bake
+print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
+            'INTERVENE':1,'IV_DUMP_FRAC':0.8,'IV_LEAD':3,'IV_FERT':1}))"
+```
+
+---
+
+## 3. What is done
+
+### Engine understood from source
+`STRATEGY.md` has the full derivation. The load-bearing findings:
+- **Market-limited, not production-limited.** Each product has a revenue
+  ceiling: MILK ~$46k @200u, WOOL ~$45k @200u, STRAWBERRY ~$60k @400u,
+  MELON ~$33k @150u, FERTILIZER ~$24k @400u. EGG and WHEAT never crash
+  (log decay) — EGG holds ~$40/unit even at 1600 units.
+- **Animals produce fertilizer unconditionally**, every day, fed or not.
+  Nobody in town consumes fertilizer, but 300-400 units still sells for
+  ~$24k. It is free money for one COLLECT action.
+- **CARE banks a bonus**: goose 1→2 eggs/day, cow 1→3 milk/2days,
+  sheep 1→4 wool/3days. Full daily feed+care strictly beats rationing.
+- **Optimal sale timing is late** (town drain is monotone, so inventory is
+  lowest and price highest at season end) — bounded only by `shedCapacity=100`.
+- Selling at the $1 floor does not add to market inventory.
+- Atomic PLANT validation: if PLANT requests for one crop exceed seeds held
+  in a turn, **all** of them are dropped.
+
+### Agent (`agent/main.py`)
+Runtime planner: fixed tile roles from a priority queue, one contiguous zone
+per unit, per-tile checklist (build → place → plant → water → fertilize →
+feed → care → collect → harvest), errand mechanic for shed round-trips,
+market module for hire/buy/sell.
+
+Implemented and verified:
+- nearest-to-shed tile ordering
+- workload-based hand sizing with a cash-proportional hiring budget
+- animal build order (sheep before cow) — searchable
+- endgame reserve-price ramp, score-relative risk multiplier
+- **opponent supply prediction** (`_forecast_supply`, `_market_pressure`):
+  reads the opponent's public farm, projects how many units of each product
+  they will still dump this season, compares against remaining town demand,
+  and lowers our reserve price when the market is forecast to be oversupplied
+  (race to sell) or raises it when undersupplied (hold). Verified: 10 cows
+  produce 150 milk over 10 days against 130 units of remaining demand →
+  pressure 2.31 → correctly signals "sell now".
+
+### Search infrastructure
+`search/ga_search.py` — (mu+lambda) ES over ~28 hyperparameters including the
+portfolio mix (`TC_COW/SHEEP/GOOSE/STRAWBERRY/MELON/WHEAT`). Evaluates on the
+real engine, 26 workers. Opponent kinds supported in `evaluate.py`:
+`"starter"` / `"random"` (builtins), `("self", params)`, `("replay", name)`,
+`("ref", name)`.
+
+### Reference agents (`opponents/`)
+The user uploaded 8 public notebooks. `opponents/extract_agents.py` pulls the
+agent source out of each (they use base64 or base85+zlib payloads, or a
+`%%writefile main.py` cell) **without running their bootstrap cells**. Result:
+
+| file | vs starter |
+|---|---|
+| `v111-8c4s-economic-core-premium-lead.py` | **121,478** |
+| `kaggriculture-rank-your-agent.py` | 121,168 |
+| `kaggriculture-3000-socre.py` | 119,293 |
+| `kaggriculture-ttv1.py` | 119,293 (identical to 3000-socre) |
+| `kaggriculture-multi-route-farming-agent.py` | 110,979 |
+| `ref-pipeline-highscore.py` | untested |
+| `kaggriculture-precomputed-schedule-policy.py` | **does not parse** (line 36) — needs the extractor extended |
+
+All audited: stdlib only (`base64/copy/json/math/zlib`), no network, no
+subprocess, no filesystem writes. Safe to run as sparring partners.
+
+`search/ga_search.py` already rotates one reference agent into the fitness
+matchup set each generation.
+
+### Real ladder intelligence
+Three real games were downloaded (`kaggle competitions replay <id>`) and
+analysed with `analysis/replay_intel.py`. The winners ran **animals with most
+of the board empty** — e.g. 7 cows + 3 sheep, zero crops, 56 tiles left empty,
+25 tiles never even purchased, beating our 73-tile crop farm 46,563 to 29,118.
+Their money curve was *behind* ours until day ~10, then compounded past us.
+
+---
+
+## 4. Current blocker
+
+**We are at ~26% of the reference agents' bank and incremental heuristic fixes
+are hitting diminishing returns.**
+
+Measured head to head against `v111-8c4s-economic-core-premium-lead`, same episode:
+
+| | ours | reference |
+|---|---|---|
+| final bank | $29,035 | $119,274 |
+| max hands | 7 | 14 |
+| turns issued | 5,157 | 6,672 |
+| **useful actions** | **1,309 (25%)** | **3,494 (52%)** |
+| movement | 3,106 (60%) | 2,855 (43%) |
+| idle (PASS) | 742 (14%) | 323 (5%) |
+
+Sales mix, same episode:
+
+| product | ours | reference |
+|---|---|---|
+| WHEAT | 202 | 479 |
+| MILK | 50 | 320 |
+| FERTILIZER | 143 | 300 |
+| STRAWBERRY | 16 | 300 |
+| WOOL | 91 | 154 |
+| MELON | 42 | 126 |
+
+Structural decisions are *not* the gap — both buy land twice, hire a similar
+total (221 vs 264). **Throughput is the gap**, and throughput is throttled by
+movement waste.
+
+**Root cause:** the reference agents are not runtime planners. They replay a
+720-step action tape that was optimised offline (`_ACTIONS` in their source;
+decode it with `analysis/ref_schedule.py`). Their 52% useful ratio comes from
+having solved routing offline, not from better runtime heuristics. Our greedy
+patrol re-derives movement every turn and wastes 60% of turns walking.
+
+Symptom of the same thing: our parameters are wildly sensitive.
+`WORK_PER_HAND` 7 → 54,891 but 10 → 11,687 and 3.5 → 10,885. That
+non-monotonicity is a greedy planner falling off cliffs, not a tuning problem.
+
+### The open decision — RESOLVED 2026-08-18
+The user chose **path 1, offline route optimisation**. Built and measured; see
+section 9. Sections 4-5 below are kept as the record of *why*, but the
+"ask the user" instruction in section 5 step 1 is discharged.
+
+1. **Offline schedule optimisation (my recommendation).** Same architecture as
+   every top agent: use the 26 cores + existing search harness to optimise our
+   own 720-step route, then replay it. Attacks the single biggest loss
+   (movement) directly. The route would be ours, searched from scratch — the
+   architecture is what's borrowed, not anyone's data.
+2. **Keep polishing the runtime planner.** Retains genuine adaptivity (can
+   react to the opponent), but likely caps around 50-70k.
+3. **Hybrid:** fixed optimised opening (days 0-10, where routing is most
+   rigid and most of the waste is), dynamic mid/late game (market play,
+   opponent response). Most work, keeps adaptivity where it matters.
+
+---
+
+## 5. Next steps
+
+Immediate, regardless of the architecture decision:
+1. **Ask the user which of the three paths above.** Do not burn a 12-hour
+   search on the current architecture before that is settled.
+2. Fix `opponents/extract_agents.py` to handle
+   `kaggriculture-precomputed-schedule-policy.ipynb` (syntax error at line 36
+   of the extracted file — likely another notebook-magic form).
+3. Test `opponents/ref-pipeline-highscore.py` and add the strong ones to
+   `REF_OPPONENTS` in `search/ga_search.py`.
+4. Investigate the MILK gap specifically: we run *more* cows than the
+   reference (11 vs 8) but sell 50 milk to their 320. Milk is produced but not
+   harvested/sold. `sim/diag_animal.py` and `sim/diag_sales.py` are the tools.
+5. Rebuild + resubmit once anything beats the current champion —
+   `search/build_submission.py` then
+   `kaggle competitions submit kaggriculture -f submission/main.py -m "..."`.
+   **5 submissions/day, only the latest 2 count.**
+
+Also worth doing:
+- The file-level defaults in `agent/main.py` are stale hand-tuned values, not
+  the searched ones. A raw `agent/main.py` run scores ~1,276. Always go
+  through `search/build_submission.py`, which bakes the checkpoint in.
+
+---
+
+## 6. Pitfalls already paid for — do not repeat
+
+1. **`--workers 52` destroys throughput.** 26 physical cores behind 52 logical.
+   48 workers took 6+ minutes to not finish one generation; 26 workers do one
+   in ~15-30s. Size pools to *physical* cores.
+2. **Never edit `agent/main.py` while a search is running.** Workers reload it
+   per evaluation, so mid-run edits silently corrupt the fitness signal. Stop
+   the search first.
+3. **`starter`/`random` are a trap as a fitness signal.** An earlier champion
+   won 100% locally against them and scored 485 on the real ladder. Keep the
+   reference agents in the matchup set.
+4. **Measure at midday, not hour 23.** End-of-day refresh clears `hands` and
+   `fed_today`, so an hour-23 sample always reads `hands=0, fed=0` and looks
+   like a catastrophic bug when nothing is wrong. Cost me a wrong diagnosis.
+5. **Replay tapes only work at their original seed.** Weed spawns and shop
+   unlocks are seeded, and — worse — weed RNG is *shared between both farms*
+   in one stream, so the opponent's weed pattern depends on how many empty
+   tiles **we** have. A recorded route can never be perfectly reproduced.
+   `search/make_sparring.py` pins the seed; treat replay opponents as a rough
+   benchmark only.
+6. **Reference notebooks can execute on import.** `my-2026-08-04-high-score-pipeline`
+   wrote `main.py` and `submission.tar.gz` into the CWD when imported. Extract
+   payloads with `ast` (as `extract_agents.py` does), don't exec their cells.
+
+### Bugs found in our own agent (all were mine, all were silent)
+7. **Goose filler bomb.** Tiles past the end of the priority queue were
+   assigned `"GOOSE"`, so any portfolio that didn't fill the whole board
+   silently became "...plus ~90 geese" — instant bankruptcy, score ~200.
+   This is why the search evolved an all-crop build: over-filling the board
+   with crops was the only way to keep the queue from running out. **The
+   search was optimising around a bug for 800+ generations / ~5 hours.**
+8. **`SELL COW`.** The sell loop iterated the raw shed, which also holds live
+   animals. `SELL` of a non-product is a malformed sub-op and the engine
+   **aborts the whole order slot**, which killed every milk/wool sale. Only
+   ever iterate `SELL_PRIORITY_ORDER`.
+9. **Fractional order quantities.** `WHEAT_FEED_BUFFER_MULT` is a searched
+   float, so `n - need*mult` produced e.g. `0.485`; the engine `int()`s that
+   to 0 and drops the order. All quantities must be whole numbers.
+10. **Tiles were ordered from (0,0)** — the farthest corner from the centre
+    shed — so the highest-priority roles landed farthest from the shed and
+    every daily wheat trip cost 8+ steps. Fixed to nearest-to-shed ordering;
+    this alone took the animal build from 253 to 50,481.
+11. **Zone thrashing.** `_rebuild_zones` re-cut zones and reset patrol
+    pointers whenever the live hand count changed, so units restarted their
+    patrol several times a day. Produced nonsense like 8-11 hands scoring 39
+    while 6 hands scored 50,000. Fixed by cutting for the day's high-water
+    unit count and preserving pointers.
+12. **Hiring ignored cash flow.** Hiring to a workload target every day costs
+    fib(n) per hand (~2,583/day for 16 hands) and bankrupted us on day 2 from
+    a $3,000 start. Fixed with `HIRE_BUDGET_FRACTION` (share of current cash).
+
+### Judgement calls that turned out wrong
+13. My first economic analysis concluded *"eggs are the uncapped sink, convert
+    everything to geese"*. The two-player shared-market model
+    (`portfolio_optimizer.py::two_player_allocate`) and then the real ladder
+    both contradicted it — total profit drops to 68% of the single-player
+    estimate and animals dominate. Trust the 2P model over the 1P one.
+14. I assumed the gap to the references was hand count. It is not — the old
+    tile-based formula hired 4 hands and scored 67k, the new workload formula
+    hired 11 and scored 54k. **Adding hands to an agent that wastes 60% of
+    turns walking just scales the waste.** Fix movement first.
+
+---
+
+## 7. Submissions
+
+Kaggle CLI is authenticated. `publicScore` is a **skill rating, not money**, and
+it converges as the submission plays more games -- two copies of the same agent
+can sit hundreds of points apart purely on match history.
+
+| id | file | score | what it actually is |
+|---|---|---|---|
+| 55594505 | submission.py | **2326.3** | **unmodified kawa** (verified, section 28) |
+| 55597426 | submission8.18.v2.py | 1898.5 | **unmodified kawa** (same agent) |
+| 55576209 | Kaggriculture.py | 1848.1 | earlier user agent |
+| 55587826 | main.py | 482.6 | our GA route agent (all-crop) |
+| 55576642 | Kaggriculture-alphago.py | 145.5 | earlier user agent |
+
+Only the latest 2 submissions are active; 5/day.
+
+**Nothing built on 2026-08-18 has ever been submitted.** Every local gain since
+is unvalidated on the ladder.
+
+Replays are downloadable and are the only honest feedback signal:
+```bash
+/home/yilewang/kagg-env/bin/kaggle competitions submissions kaggriculture
+/home/yilewang/kagg-env/bin/kaggle competitions episodes <SUBMISSION_ID>
+/home/yilewang/kagg-env/bin/kaggle competitions replay <EPISODE_ID> -p replays/
+/home/yilewang/kagg-env/bin/python -m pbt.extract_tape replays/<file>.json <seat> out.py
+```
+The episode's real seed is at `info.seed` (32-bit, e.g. 1623205117) -- reproduce
+any ladder game locally with it.
+
+## 8. Ground rules established with the user
+
+- The competition permits referencing public notebooks; they are published
+  under open licences. Using their **parameters and strategies** is fine.
+  Wholesale copying of another entrant's agent as our submission is not what
+  we're doing — we build our own and use theirs as sparring partners and as a
+  source of strategy ideas.
+- The user wants opponent modelling/prediction in the agent. A first version
+  is implemented (section 3); it is currently worth only ~+150 per game
+  because throughput, not sell timing, is the binding constraint.
+
+---
+
+## 9. Route architecture (2026-08-18) — current line of work
+
+The user chose offline route optimisation. Built in `route/`, which touches
+nothing under `agent/` or `search/`, so the old agent and its search still run
+unmodified.
+
+### Why it is not a 720-step tape
+The reference agents replay a baked `_ACTIONS` tape. We deliberately do not:
+weed spawns come from an RNG stream **shared between both farms**, so the
+opponent's empty-tile count shifts our weed pattern and no tape is exactly
+reproducible (pitfall #5). Instead the *plan* is searched offline and the
+*route* is solved fresh each morning from observed state. Same routing win,
+no tape fragility. The reference agents need a `_weed_repair_action` for
+exactly this reason; we don't.
+
+```
+route/geom.py      board geometry. Movement is unrestricted -- LOCKED tiles are
+                   passable -- so travel is plain Manhattan, no path search.
+route/router.py    the daily routing solver: angular sweep partitions tiles
+                   across units packed to each unit's turn budget, then
+                   nearest-neighbour + 2-opt orders each unit's stops.
+                   Emits a *tour*, not a move tape (a hand's real spawn tile
+                   isn't knowable at plan time, so a wrong guess must cost a
+                   step, not a desync).
+route/agent.py     plan genome + task builder + tour follower + market.
+route/evaluate.py  per-episode harness (mirrors search/evaluate.py).
+route/search.py    (mu+lambda) over the plan genome. Fitness = mean OWN bank,
+                   not margin: we are still behind, and margin against a much
+                   stronger fixed opponent is dominated by their score.
+```
+
+### Measured progression (seed 11 unless noted)
+| | vs starter (5-seed mean) | head-to-head vs v111 |
+|---|---|---|
+| old `agent/main.py` | ~55k | 26% |
+| route, first working run | 82.9k | 40% |
+| + idle filler | 113.9k | 38% |
+| + front-run & terminal liquidation, filler off | 104.5k | **51%** ($74.9k vs $146.1k) |
+
+Action split went from 25% useful / 60% move / 14% idle to 42% / 43% / 15%.
+**Movement is solved** -- 31-43% against the best reference's 43%. Routing is
+no longer the bottleneck; sale timing into a contested market is.
+
+### Mechanisms taken from the reference agents
+The user confirmed the competition permits using their code directly (all eight
+are open-licence, stdlib-only, already audited). Lifted:
+- **Front-running the town tick.** Within a step the engine runs
+  `_process_market` *before* `_town_consume`, so a sale placed on a step the
+  town drains enters an undrained market, while the same sale one step later
+  enters after the tick lifted the price. Rule: sell now unless the town
+  consumes this item this step. v111 applies it to exactly
+  `('MELON','MILK','STRAWBERRY','WOOL')` -- the four steepest glut curves
+  (MELON/WOOL quadratic above I0, MILK/STRAWBERRY linear).
+- **Terminal liquidation.** Reward is money on hand; shed stock at the buzzer
+  is worth zero. Dump everything from `TERMINAL_STEP` (they use 680).
+
+## 10. New pitfalls paid for this session
+
+15. **A crop must be watered on the day it is planted.** `_new_plant` starts a
+    plant at `consecutive_unwatered = 1`, so a seedling that isn't watered
+    before the nightly refresh hits 2 and is a weed by morning. Planning PLANT
+    and WATER as separate days silently killed all 73 crops we planted; the
+    whole crop portfolio produced nothing. Fixing it alone took seed 11 from
+    $29,202 to $90,201. PLANT and WATER must ride in the same tile visit.
+16. **`starter` and head-to-head can move in *opposite* directions.** The idle
+    filler was worth +37% vs starter and **-4pp** head-to-head, because the
+    extra marginal product lands in a market the reference has already crashed.
+    Flooding is a spoiling move that costs us more than it costs them. Never
+    accept a change on its vs-starter number alone -- this is pitfall #3 with
+    a live example.
+17. **`pkill -f <pattern>` matches your own shell.** `pkill -f ga_search` from
+    a bash -c whose command line contains "ga_search" kills the shell running
+    it. Use a bracket class: `pkill -f '[g]a_search'`.
+18. **Editing `route/agent.py` mid-search corrupts fitness**, same as pitfall #2
+    -- `route/evaluate.py` re-execs the file per episode. Stop the search first.
+
+## 11. Opponent modelling (`route/opponent.py`)
+
+Two independent signals, kept separate because they fail differently.
+
+**Behavioural — the opponent's sales are EXACTLY recoverable, not guessed.**
+Within a step the engine applies both players' market orders and then the
+town's consumption, so
+
+    inv[t+1] = inv[t] + my_sales[t] + their_sales[t] - town_take[t]
+
+and every term but `their_sales` is known: inventory is public, `town_take` is
+computable from the unlocked shop list, and our own sales are what we issued.
+Validated against engine ground truth over a full episode:
+
+| item | inferred | true | err |
+|---|---|---|---|
+| STRAWBERRY / MELON / MILK / WOOL / EGG | 278 / 102 / 215 / 94 / 0 | identical | **0** |
+| WHEAT | 237 | 244 | -7 |
+| FERTILIZER | 215 | 217 | -2 |
+
+Total absolute error 9 for a whole season, entirely in WHEAT and FERTILIZER --
+the only two products whose price reaches the $1 floor, where the engine
+deliberately does *not* add the sale to inventory. Exact on all four front-run
+products.
+
+**Structural** — their farm is public, so `forecast_supply` projects their
+visible tiles forward with the engine's own yield rules (blind to their shed).
+`classify()` reads style/tempo; it correctly labels v111 `animal-heavy,
+{COW: 8, SHEEP: 4}`.
+
+`pressure()` fuses them into supply-vs-remaining-town-demand; `reserve_scale()`
+turns that into a reserve-price multiplier, and a predicted glut also cancels
+the front-run hold (no point waiting a step if they are about to bury the
+market). Worth ~+$1.1k/game head-to-head, consistent in sign across 4 seeds.
+
+## 12. Measurement pitfalls (these produced two wrong conclusions)
+
+19. **Never attribute engine callbacks by comparing against objects from `obs`.**
+    `kaggle_environments` structifies/copies the observation before the agent
+    sees it, so `farm is obs["farms"][0]` is *always false* inside a patched
+    `_commit_unit`, and every commit gets attributed to one player. This
+    produced "we sold 0 of everything" while banking $58k. Hook
+    `_process_market(state, env)` instead -- it receives the live state -- and
+    identify players by `private` identity.
+20. **A validation whose "ground truth" shares the broken step with the thing
+    being validated proves nothing.** The opponent-sales inference first
+    "validated" at near-zero error only because both sides of the comparison
+    were computing *combined* sales. Re-run with correct attribution it really
+    is exact, but the first test was circular and would have passed for a
+    completely broken model.
+21. **v111 does *not* profit from us.** An earlier note here compared v111's
+    121k-vs-starter to 146k-vs-us and concluded we were feeding it. Those were
+    measured in different seats. Same seed, v111 in seat 0 throughout:
+    starter 195,365 / pass 190,184 / random 180,831 / **our agent 146,063**.
+    We suppress it more than any other opponent. Also: the unlocked *shop mix*
+    changes with the opponent (weeds only roll on empty tiles, shifting the RNG
+    before `rng.choice(SHOPS)`), so cross-opponent score comparisons are
+    confounded and cannot support strategy claims at all.
+
+## 13. Pivot to the reference lineage (2026-08-18, later)
+
+`route/tournament.py` runs a round-robin over every loadable reference agent,
+both seat orders (seat is not neutral -- market orders settle in player order
+and player 0's weeds roll first). First run, 126 games:
+
+| agent | win% |
+|---|---|
+| multi-route-farming-agent | 72% |
+| 3000-socre / ttv1 | 69% |
+| rank-your-agent | 64% |
+| **v111-8c4s** | **47%** |
+| ref-pipeline-highscore | 17% |
+| **our route agent** | **0% (0/36)** |
+
+Two corrections this forced:
+- **v111 was the wrong benchmark.** Everything in sections 9-12 was measured
+  against the 5th-strongest agent.
+- Our own architecture lost every game. Sections 9-12 remain accurate as
+  measurements, but the runtime-routing line was abandoned here.
+
+### What the strongest agent actually does
+`multi-route` carries **five** precomputed tapes and picks one at runtime from
+the town's shop draw: `6c12s_4q_first_yarn` when a YARN_STORE opens first (a
+single-product shop eats 2 wool/tick), `10c4s_3q` when the milk shops appear,
+`8c6s_3q` otherwise. That is the mechanism we never had -- our portfolio was
+fixed at day 0 and ignored the shops entirely, which is why our wool realised
+$19.8/unit against their $61.
+
+### The win: their constants were never optimised
+The tapes are optimal and untouched. The runtime layer wrapped around them is
+hand-set scalars. `route/batch.py` scores N variants on one fixed matchup set;
+two rounds of 12 and 10 variants found:
+
+    _PREEMPT_MIN_FUTURE_QUANTITY: 4 -> 0     (the load-bearing one)
+    _PREEMPT_MAX_BATCH:          12 -> 30
+
+280-game round-robin: **TUNED 77%** vs the published agent's **60%**, +17pp,
+and it tops the whole field. Baked by `route/bake.py` into
+`submission/main.py` (148KB, stdlib-only, verified importable with the project
+off sys.path).
+
+**Score by wins, not mean bank.** All 12 first-round variants sat within $133
+of each other on mean money while win rate ranged 33-100% -- the tape dominates
+the bank, and the runtime layer only decides close games. Ranking by mean money
+picked the wrong variant.
+
+## 14. PBT as specified is a random walk — sample size, not strategy
+
+Ran the population-based-training protocol (`pbt/`) for 10 rounds. It produced a
+champion that then lost **22%-78% over 50 games to the variant the earlier
+manual batch rounds had already found**. Ten rounds of "optimisation" moved
+backwards.
+
+The cause is selection sample size, and it generalises to any search here:
+
+- Real differences between runtime-constant variants are **1-3 win-rate points**.
+  Resolving that needs hundreds of games; the protocol scored each variant on
+  **12**.
+- With 12 games the ranking is dominated by seed noise, so `v8 noise: small
+  gaussian on every constant` kept "winning" and the genome random-walked away
+  from the good setting.
+- The stop condition ("champion sweeps the pool, 5 rounds running") fired twice
+  spuriously. First because sampling 3 opponents from a pool containing a 0%
+  agent makes rank-1 nearly free; then, after hardening it to a full-pool
+  gauntlet, because 4 seeds cannot separate near-identical agents (the pool
+  fills with past champions that share the same tape).
+
+Measured truth over 50 games each, both seats:
+
+| matchup | win rate |
+|---|---|
+| SUB_v12 vs published base | **62%** |
+| AGGRO_v11 vs published base | 58% |
+| PBT round-10 champion vs base | 54% |
+| PBT round-10 champion vs SUB_v12 | **22%** |
+
+**Rule for any future search on this agent: a variant needs >= 100 games before
+its rank means anything.** Mean bank is useless as a selection signal (all
+variants sit within ~$150 of each other; the tape sets the bank). Rank by wins,
+over enough games.
+
+Current best remains `_PREEMPT_MIN_FUTURE_QUANTITY=0`, `_PREEMPT_MAX_BATCH=30`
+on the multi-route base -- what is already in `submission/main.py`.
+
+## 15. The base agent IS the first-place player's agent
+
+`multi-route-farming-agent` is カワシギ's. Its own function names give it away --
+`_kawa_route_label`, `_kawa_actions`, `_KAWA_MILK_SUPPORT` -- and its step-0
+market order matches the published description of that opening exactly:
+
+    [HIRE x5, BUY_ANIMAL COW 2, BUY_ANIMAL SHEEP 2,
+     BUY_SEED WHEAT 7, BUY_SEED MELON 12, BUY_PRODUCT WHEAT 6]
+
+So it is already in the pool as `ref_A`, it is the base our submission is built
+on, and the tuned build beats it.
+
+**A circulating architectural write-up of that agent is wrong** and would send
+work in the wrong direction if believed: it credits an A* pathfinder, a central
+job queue with mutex tile locks, and a runtime ROI calculator. The source has
+none of those. It replays five precomputed 720-step tapes and picks one from the
+town's shop draw. The "fluid micro" visible in a replay was solved offline.
+
+## 16. Counter-parameters per opponent: the premise does not hold
+
+Measured a 6-config x 6-opponent grid (`pbt/counter.py`, writes
+`models/counter_params.json` and `opponent_features.csv`):
+
+| config | ref_A | ref_B | ref_C | ref_D | ref_E | ref_F |
+|---|---|---|---|---|---|---|
+| base | 38% | 100% | 50% | 100% | 50% | 100% |
+| sub_v12 | 75% | 100% | 50% | 100% | 50% | 100% |
+| aggro | 88% | 100% | 50% | 100% | 50% | 100% |
+| preempt off | 12% | 100% | 50% | 100% | 50% | 100% |
+
+Only **ref_A** responds to the constants at all. ref_B/D/F are already 100%
+losses for them under every config, and ref_C/E sit at a dead 50% no matter what
+-- both are tape agents whose farms barely interact with ours, so the games are
+decided by the seed, not by play. Per-family counter-parameters and K-Means
+clustering therefore have nothing to separate: the whole problem is "beat ref_A".
+
+Corollary: any headline win-rate over this field is mostly fixed. Moving ref_A
+from 38% to 88% moves the overall number by ~8 points and everything else is
+saturated.
+
+## 17. Submission confirmed, and win rates here are NON-TRANSITIVE
+
+100 games per matchup (50 seeds x both seats), 95% CIs:
+
+| matchup | win rate | 95% CI |
+|---|---|---|
+| **sub_v12 vs base** | **70%** | [61%, 79%] |
+| combo vs base | 70% | [61%, 79%] |
+| aggro vs base | 53% | [43%, 63%] |
+| aggro vs sub_v12 | 32% | [23%, 41%] |
+| combo vs sub_v12 | **17%** | [10%, 24%] |
+| combo vs aggro | 68% | [59%, 77%] |
+
+`sub_v12` (`_PREEMPT_MIN_FUTURE_QUANTITY=0`, `_PREEMPT_MAX_BATCH=30`) is the
+build in `submission/main.py` and is confirmed best.
+
+Two traps recorded:
+
+- The 8-game counter grid in section 16 ranked `aggro` top (88% vs ref_A). At
+  100 games it is 53% [43%, 63%] vs base -- indistinguishable from the untuned
+  agent. Third time this session a small sample gave a confidently wrong answer
+  (see also section 14). **>= 100 games, always.**
+- **Win rate is not transitive here.** `combo` beats base 70% and beats aggro
+  68%, yet loses to sub_v12 17-83. A single "overall win%" league table conceals
+  this; matchups have to be read pairwise. Ladder standing therefore depends on
+  who is actually on the ladder, not on our field-average.
+
+## 18. Ladder feedback: 1887, and why the day-1 gap cannot be patched
+
+First real signal: **1887** on the ladder. Losses traced to a defect that is
+baked into **all five tapes**: day 1 has 0 hand slots, 0 hand actions and 0 HIRE
+orders, so the farm runs that whole day on the farmer alone.
+
+    day 0: money $3,000  hires 5  hands 5  hand-actions 89
+    day 1: money $23     hires 0  hands 0  hand-actions 0   <-- dead day
+    day 2: money $176    hires 4  hands 4  hand-actions 59
+
+Not a cash problem: four hires cost fib(0..3) = $7 against $23 on hand.
+
+**It is nevertheless unpatchable from outside the tape.** Measured, 40 games vs
+ref_A each:
+
+| overlay | win rate vs ref_A |
+|---|---|
+| none (submission) | **62%** |
+| hire on day 1 only, no work assigned | 62% (bodies stand idle -- tape has no actions for them) |
+| hire every day | **0%** |
+| hire + assign work, day 1 only | **5%** |
+| hire + assign work, every day | **0%** |
+
+Two independent mechanisms, both fatal:
+
+1. **Hiring ahead of the tape reprices its own hires.** Cost is
+   `fib(hires_today)`; taking four first moves the tape's five from $7 to
+   fib(4..8) = $81, which it cannot pay at $23, so it goes crewless.
+2. **The tape assumes an exact state trajectory.** Watering one extra plant or
+   harvesting one animal early on day 1 makes later scripted actions miss --
+   HARVEST on an empty tile, FEED on a fed animal, SELL of stock that is not
+   there. A tape `PASS` is a hand holding station, not an idle hand.
+
+So the free day of labour is genuinely unreachable without re-optimising the
+tape itself. That is the case for building our own offline schedule optimiser --
+the same conclusion section 9 reached from the other direction.
+
+## 19. The submission is not exploitable, and league tables lie here
+
+Swept 50 constant configurations against the submission, 40 games each: **none
+beat it.** Best adversary is the untuned base at 38%; worst 20%. Within this
+parameter family sub_v12 is dominant, so an opponent holding our code cannot
+tune a counter to it.
+
+The v2 adaptive agent (`pbt/adaptive.py`, runtime opponent identification at day
+4 -> per-family counter constants) was built and entered: it finished **exactly
+tied with sub_v12** (86/144 wins, identical mean bank), because the measured
+counter table selects sub_v12 for every family. K-Means was dropped as
+unnecessary -- six opponents separate exactly at day 4 on raw counts.
+
+**Do not pick a submission from the league table.** In the 720-game table
+`aggro` places first at 65% and sub_v12 third at 60%, yet head-to-head over 100
+games aggro loses to sub_v12 **32-68**. Win rate here is non-transitive; rank
+pairwise against the agent you actually expect to meet.
+
+## 20. Opponent modelling that finally paid: market intervention (+10pp)
+
+Of the counter-parameter list, only the market lever is reachable. Opening hire
+count, feed volume, quadrant timing and crop preference are compiled into the
+tape and cannot be moved from outside (section 18). Market orders change no
+tile, so they are safe to add.
+
+`pbt/intervene.py` bakes an overlay that times sales off the exact
+opponent-sales inference: it measures their per-item sale cadence from public
+market inventory, and one turn before the predicted sale pushes stock into the
+book so they quote into a depressed market.
+
+Validated at 100 games per matchup:
+
+| matchup | win rate | 95% CI |
+|---|---|---|
+| dump 40% vs ref_A | **80%** | [72%, 88%] |
+| dump 60% vs ref_A | 80% | [72%, 88%] |
+| dump 80% vs ref_A | 79% | [71%, 87%] |
+| previous submission vs ref_A | 70% | [61%, 79%] |
+| **dump 40% vs previous submission** | **85%** | [78%, 92%] |
+| dump 80% vs ref_C / ref_B | 76% / 88% | unchanged from before |
+
+The **wheat squeeze** in the same spec (buy feed inside an animal-heavy
+opponent's window to lift their price) is catastrophic: **2%**. It spends cash
+the tape needs downstream. Dropped.
+
+Supporting modules built: `pbt/features.py` (the six-dim vector; five come off
+the public farm, `market_tx_frequency` off the exact inference) and
+`pbt/cluster.py` (K-Means K=5, k-means++ seeded, z-scored -- written out because
+the venv has no sklearn and `cash_burn_rate_day5` would otherwise be the only
+dimension the distance sees).
+
+## 21. A packaging bug that would have scored ZERO
+
+Kaggle resolves a file agent with `get_last_callable`, which walks the module
+namespace in **insertion order**. Rebinding `agent` in an appended overlay does
+**not** move it -- the name was inserted by the base file near line 988 -- so the
+last *newly defined* callable wins. With the intervention overlay appended that
+was `_iv_predict`, and the engine called it as
+`_iv_predict(observation, configuration)`:
+
+    TypeError: cannot use Struct as a dict key (unhashable type: 'Struct')
+
+Every in-process test passed, because those call `module.agent` directly. Only
+loading the file **by path**, the way Kaggle does, exposes it.
+
+`route/bake.py` now always appends a final `_submission_entry(obs)` stub, and it
+must remain the last definition in the file. **Any future overlay must be
+validated by path (`env.run([path, opponent])`), never by import.**
+
+## 22. V16-RC5 is v111 (identical SHA-256) -- do not submit it
+
+The V16-RC5 notebook's `main.py` is byte-for-byte
+`opponents/v111-8c4s-economic-core-premium-lead.py`:
+
+    sha256 f029fa0cb66a9eb509afbe44e3f59b800332d0419db91607183410e4089c4d19
+    18,946 bytes -- matches the notebook's own asserted hash and size
+
+Its headline results ("60/60", "+18,992 mean margin") are measured against its
+own reconstructed core and three public artifacts we do not hold. It was never
+run against kawa/multi-route. In our 720-game round-robin v111 places **5th at
+47%**, behind multi-route (55%) and well behind our build. Submitting it is a
+downgrade.
+
+The **Market Relay** described alongside that notebook is *not* in that file --
+the shipped code front-runs one turn on four premium items with no gate. The
+described mechanism (3-turn lead, FERTILIZER included, exact repayment,
+near-mirror gate) is a later version, and its four ideas were tested separately:
+
+| relay variant | vs ref_A | overall (120 games) |
+|---|---|---|
+| **lead 3 + FERTILIZER** | **82%** | 80% |
+| lead 3 | 82% | 80% |
+| lead 1 + FERTILIZER | 78% | 80% |
+| lead 1 (previous submission) | 78% | 80% |
+| near-mirror gate | 72% | 78% |
+| exact repayment, lead 1 | 68% | 77% |
+| exact repayment, lead 3 | 68% | **75%** |
+
+**Two of the four ideas are actively harmful here:**
+
+- **Exact repayment hurts** (75-77% vs 80%). Conserving the two-turn volume is
+  right for an agent whose sales are already optimally sized; ours deliberately
+  dumps 40% of held stock as an aggressive act, and repaying hands the advantage
+  straight back.
+- **Near-mirror gating hurts** (78%). It only reduces how often we act, and
+  every opponent in this field is worth acting against.
+
+Adopted: **lead 3 + FERTILIZER**. Decisive 100-game pairwise:
+
+| matchup | win rate | 95% CI |
+|---|---|---|
+| lead3+fert vs previous submission | **88%** | [82%, 94%] |
+| lead3+fert vs ref_A | **87%** | [80%, 94%] |
+| previous submission vs ref_A | 80% | [72%, 88%] |
+
+Note the screening panel scored all four leading variants at an identical 80%
+overall while the direct 100-game pairing separated them cleanly at 88%.
+**Screen broadly, decide pairwise.**
+
+## 23. Tape selection is already optimal -- the expansion/crop/hiring search is exhausted
+
+The parameter-search protocol targets expansion rhythm, crop mix and hiring
+schedule. None of the three is editable on this architecture -- all are compiled
+into the tapes, and any overlay touching farm state or pre-empting a HIRE
+measures 0-5% (section 18).
+
+The reachable form of that same search is the **tape-selection rule**: the base
+agent ships five tapes and each one *is* a distinct mix and expansion plan
+(`10c4s_3q`, `8c6s_3q`, `6c8s_3q`, `6c12s_4q_first_yarn`,
+`6c12s_4q_second_yarn`). `_kawa_route_label` maps the town's shop draw onto them
+through five hand-written buckets, and that mapping had never been searched.
+`pbt/tapesel.py` makes it searchable; nothing touches a tile.
+
+Bucket firing frequency, measured over 120 games:
+
+| bucket | condition | fires |
+|---|---|---|
+| 0 | YARN_STORE first | 18% |
+| 1 | YARN_STORE in first two | 5% |
+| 2 | YARN_STORE in first three | 7% |
+| **3** | **milk shop in first three** | **57%** |
+| 4 | otherwise | 13% |
+
+Coordinate scan, all 5 tapes in each of the 5 buckets, 120 games per config:
+
+- **Every alternative for bucket 3 -- the one that fires 57% of the time --
+  ranked below the default.** The hand-written `10c4s_3q` choice is optimal.
+- The only configs scoring above default were +1% (one game in 120) and both sat
+  in low-frequency buckets.
+
+Decisive 100-game pairwise on those two "+1%" changes combined:
+
+| matchup | win rate | 95% CI |
+|---|---|---|
+| combined change vs default mapping | **26%** | [17%, 35%] |
+| combined change vs kawa | 87% | [80%, 94%] |
+| default mapping vs kawa | 87% | [80%, 94%] |
+
+The apparent gain was not merely noise -- it was **inverted**. Third occurrence
+of the same pattern: a screening panel rates variants equal or slightly better,
+and the direct pairing shows one clearly worse. Screening panels rank against a
+*field*; only pairwise ranks against an *opponent*, and this game is
+non-transitive.
+
+**Conclusion: this dimension is exhausted.** The submission is unchanged.
+
+## 24. SEAT ASYMMETRY -- win rate is the wrong metric for same-tape matchups
+
+**An agent playing itself wins seat 0 only 6/40 = 15%.** Identical file, both
+seats, 40 seeds. Mean money margin: **-$66** on a ~$90k bank. kawa against
+itself gives exactly the same figures.
+
+Same-tape matchups are therefore effective *ties* whose winner is decided by
+structural seat asymmetry -- `_end_of_day` rolls player 0's weeds first, and
+`_process_market` resolves atomic HIRE/BUY_LAND in player order -- not by
+strategy. Every sibling-vs-sibling win rate reported earlier in this document
+(e.g. "88% vs sub_v12") measures that coin flip, not skill.
+
+**Use paired margin instead.** For each seed play both seat orders and sum the
+two margins; the seat term cancels exactly. Validated: an agent against a
+byte-identical copy of itself scores **+0 mean, +0 median, 0 paired wins, 0
+paired losses**. Win rate on the same data would have said 15% or 85% depending
+on which side you counted.
+
+Numbers against *structurally different* opponents were never in doubt -- those
+margins are large ($1.2k-$15k) and survive either metric.
+
+## 25. We were exploitable, and turning our own weapon around found the fix
+
+`_future_sells(obs, step)` in kawa reads **its own tape**, not us -- the `obs`
+argument only selects which tape. So kawa does not model our sales. But
+`_clone_distance(obs) > _PREEMPT_MAX_CLONE_DISTANCE` does read our farm, and our
+measured clone distance against kawa is **0** (we run the same tape), so its
+preemption is fully armed against us. Denying it is worth **+5pp / +$784**
+(87% -> 92%, +$665 -> +$1,449 when kawa runs with `_PREEMPT_ENABLED=False`).
+
+That prize is unreachable: raising the distance past 6 requires 7 extra hands
+(fib-priced, ruinous), 7 changed tiles (breaks the tape, 0-5%), or a different
+tape (measured net-negative in section 23). The signature is derived from farm
+state the tape owns.
+
+The second-order question -- *what if the opponent models us?* -- did pay off.
+The earlier adversary sweep (section 19) was incomplete: it varied preempt
+constants but **never equipped an opponent with our own market-intervention
+layer**. Doing so produces a predator that infers our sales exactly as we infer
+theirs, and three of them beat us:
+
+| predator | paired margin vs us | paired W/L |
+|---|---|---|
+| dump 80%, lead 3, +fert | **+467** | **39/1** |
+| dump 80%, lead 5, +fert | +336 | 34/5 |
+| dump 40%, lead 5, +fert | +283 | 36/4 |
+| byte-identical copy | +0 | 0/0 |
+
+So our own dump fraction was simply too low. Sweeping it by paired margin:
+
+| dump | vs kawa | mirror vs d40 |
+|---|---|---|
+| 40% (previous) | +1,221 | -- |
+| 60% | +1,358 | +297 (37/3) |
+| **80%** | **+1,428** | **+467 (39/1)** |
+| 100% | +1,209 | +29 (29/11) |
+
+Adopted 80%. Against the wider field all fractions sit within ~$26 of each other
+(noise), so the mirror matchup is what decides it -- and on a ladder where most
+entries descend from the same public notebooks, mirror matchups are common.
+
+## 26. RETRACTION: the constant tuning was worth nothing
+
+Sections 13 and 19 claimed `_PREEMPT_MIN_FUTURE_QUANTITY=0` + `_PREEMPT_MAX_BATCH=30`
+beat the published agent by +17pp (77% vs 60%). **That was the seat coin flip,
+not strategy.** Re-measured by paired margin over a 3,120-game round-robin:
+
+| model | vs field | vs kawa |
+|---|---|---|
+| **d80 lead-3 +fert (current)** | **+9,016** | **+1,415** |
+| d40 lead-3 +fert | +8,912 | +1,212 |
+| d40 lead-1 | +8,332 | +464 |
+| aggro | +8,185 | +89 |
+| PBT_r5 | +8,119 | **-7** |
+| kawa / base_untuned | +8,103 | 0 |
+| **sub_v12 (the "+17pp" build)** | +8,096 | **-7** |
+| ref_B / ref_D | +1,608 | -9,574 |
+| ref_E v111 | -13,338 | -18,621 |
+| ref_C | -13,624 | -18,752 |
+| ref_F | -43,120 | -43,877 |
+
+sub_v12, PBT_r5 and aggro are all statistically **tied with the untuned base**.
+Every generation of constant search in sections 13-23 produced nothing. The
+entire real edge comes from the market-intervention layer: +464 -> +1,212 ->
++1,415 as lead, fertilizer and dump fraction were added.
+
+And that edge is thin: **+$1,415 on a ~$90,000 bank is 1.6%.** It wins
+consistently (0/40 paired losses to kawa) but leaves little room on a ladder
+whose opponents differ from this field. Ladder scores of 1887 then 1800 are
+consistent with submissions that were, in substance, kawa.
+
+## 27. When the opponent model needs to run
+
+Observation is **every turn** and cannot be sampled: the inference is a running
+inventory delta, so a skipped turn breaks the arithmetic.
+
+The *action* is sparse -- measured over one full episode against kawa:
+
+- dumps fire **65 times in 720 turns = 9%**
+- never before **day 6** (needs >=3 observations to estimate a sale period)
+- concentrated in days 23-27, where volumes are largest
+- by product: FERTILIZER 33, STRAWBERRY 17, MILK 9, WOOL 4, MELON 2
+
+FERTILIZER alone is half of all firings -- the item added from the Market Relay
+write-up, and the single most valuable part of that idea.
+
+## 28. Ladder replays: both user submissions are plain kawa
+
+`kaggle competitions replay <EPISODE_ID>` works from this machine, and
+`pbt/extract_tape.py` pulls any player's 719-step tape out of a replay and
+transplants it into kawa's runtime scaffolding (weed repair + hand alignment).
+Faithfulness verified: replaying both extracted tapes at the episode's real seed
+reproduced 107,064 v 135,395 against an actual 108,217 v 135,557.
+
+**Note the off-by-one:** replay `steps[0]` is the initial state and carries no
+action. Actions live at `steps[1:]`, which is why the reference tapes are 719
+long. Taking `steps[0]` silently discards the opening turn.
+
+Extracting our own play from submission 55594505 (the 2326.3 one) and comparing
+against kawa's five tapes:
+
+| kawa tape | farmer actions matched | market matched |
+|---|---|---|
+| **6c12s_4q_first_yarn** | **100.0%** | 90.1% |
+| 8c6s_3q / 10c4s_3q | 65.2% | 52.7% |
+| 6c12s_4q_second_yarn | 61.2% | 49.0% |
+
+**Both submissions are unmodified kawa.** The 2326.3 vs 1898.5 gap is rating
+convergence and match history, not a difference in agent. There is no secret
+stronger file to recover.
+
+### The ladder meta has converged on 8c4s
+Three different opponents (Naru041104, Igor V, StopPlantingStartGameTheorying)
+open with the same line -- 4-5 HIRE, **1 COW / 4 SHEEP**, 5 wheat seed, 5 melon
+seed, 5-14 wheat product -- and all reach **14 hands**. kawa's tapes allocate
+only **12 hand slots** (277 HIRE commands but 12 slots), giving ~22% less labour
+throughput: 2,741 useful actions against Naru's 3,494.
+
+Yet over 40 paired seeds kawa still beats v111 by +12,232 and our build beats
+Naru's extracted tape by +8,860 (29/40). The three losses shown were a bad draw
+from a ~30% loss rate, not a systematic defeat.
+
+### Seed distribution is NOT the problem (hypothesis tested and rejected)
+Ladder seeds are 32-bit (681050694, 2014467720, 1623205117) while all local work
+used 1-50. Tested 40 small vs 40 large seeds:
+
+| matchup | seeds 1-40 | 32-bit seeds |
+|---|---|---|
+| ours vs naru_tape | +11,374 (28/40) | +8,860 (29/40) |
+| kawa vs v111 | +13,862 (31/40) | +12,232 (32/40) |
+| ours vs kawa | +1,428 (40/40) | +1,611 (39/40) |
+
+The populations agree. A single-seed sign flip was one of the ~11 losing draws,
+not evidence of bias.
+
+### Why the +1,611 matters
+Real ladder wins by the current submission were **+659, +1,825, +3,350**. Our
+measured improvement over plain kawa (+1,611, winning 39 of 40 paired seeds) is
+the same order as the margins that actually decide these games.

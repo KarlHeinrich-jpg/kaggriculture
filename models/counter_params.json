@@ -1,0 +1,138 @@
+{
+ "best_config": {
+  "ref_A": "aggro",
+  "ref_B": "base",
+  "ref_C": "base",
+  "ref_D": "base",
+  "ref_E": "base",
+  "ref_F": "base"
+ },
+ "configs": {
+  "base": {},
+  "sub_v12": {
+   "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+   "_PREEMPT_MAX_BATCH": 30
+  },
+  "aggro": {
+   "_PREEMPT_FRACTION": 3.0,
+   "_PREEMPT_MAX_BATCH": 40,
+   "_PREEMPT_MAX_CLONE_DISTANCE": 40,
+   "_PREEMPT_START": 0
+  },
+  "early": {
+   "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+   "_PREEMPT_MAX_BATCH": 30,
+   "_PREEMPT_START": 0,
+   "_PREEMPT_STOP": 716
+  },
+  "clone40": {
+   "_PREEMPT_MIN_FUTURE_QUANTITY": 0,
+   "_PREEMPT_MAX_BATCH": 30,
+   "_PREEMPT_MAX_CLONE_DISTANCE": 40
+  },
+  "off": {
+   "_PREEMPT_ENABLED": false
+  }
+ },
+ "centroids": {
+  "ref_A": {
+   "hands": 0.0,
+   "quadrants": 1.0,
+   "money": 30.0,
+   "COW": 3.0,
+   "SHEEP": 2.0,
+   "GOOSE": 0.0,
+   "WHEAT": 7.0,
+   "MELON": 12.0,
+   "STRAWBERRY": 0.0,
+   "PASTURE": 0.0,
+   "COOP": 0.0,
+   "WEED": 0.0
+  },
+  "ref_B": {
+   "hands": 0.0,
+   "quadrants": 1.0,
+   "money": 10.0,
+   "COW": 3.0,
+   "SHEEP": 2.0,
+   "GOOSE": 0.0,
+   "WHEAT": 7.0,
+   "MELON": 12.0,
+   "STRAWBERRY": 0.0,
+   "PASTURE": 0.0,
+   "COOP": 0.0,
+   "WEED": 0.0
+  },
+  "ref_C": {
+   "hands": 0.0,
+   "quadrants": 1.0,
+   "money": 33.75,
+   "COW": 1.0,
+   "SHEEP": 4.0,
+   "GOOSE": 0.0,
+   "WHEAT": 6.0,
+   "MELON": 5.0,
+   "STRAWBERRY": 3.0,
+   "PASTURE": 0.0,
+   "COOP": 0.0,
+   "WEED": 0.125
+  },
+  "ref_D": {
+   "hands": 0.0,
+   "quadrants": 1.0,
+   "money": 10.0,
+   "COW": 3.0,
+   "SHEEP": 2.0,
+   "GOOSE": 0.0,
+   "WHEAT": 7.0,
+   "MELON": 12.0,
+   "STRAWBERRY": 0.0,
+   "PASTURE": 0.0,
+   "COOP": 0.0,
+   "WEED": 0.0
+  },
+  "ref_E": {
+   "hands": 0.0,
+   "quadrants": 1.0,
+   "money": 33.75,
+   "COW": 1.0,
+   "SHEEP": 4.0,
+   "GOOSE": 0.0,
+   "WHEAT": 6.0,
+   "MELON": 5.0,
+   "STRAWBERRY": 3.0,
+   "PASTURE": 0.0,
+   "COOP": 0.0,
+   "WEED": 0.125
+  },
+  "ref_F": {
+   "hands": 0.0,
+   "quadrants": 1.0,
+   "money": 801.0,
+   "COW": 3.0,
+   "SHEEP": 1.0,
+   "GOOSE": 0.0,
+   "WHEAT": 11.0,
+   "MELON": 8.0,
+   "STRAWBERRY": 0.0,
+   "PASTURE": 0.0,
+   "COOP": 0.0,
+   "WEED": 0.0
+  }
+ },
+ "feature_keys": [
+  "hands",
+  "quadrants",
+  "money",
+  "COW",
+  "SHEEP",
+  "GOOSE",
+  "WHEAT",
+  "MELON",
+  "STRAWBERRY",
+  "PASTURE",
+  "COOP",
+  "WEED"
+ ],
+ "feature_step": 96
+}
