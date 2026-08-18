@@ -1025,6 +1025,25 @@ _IV_REPAY = False          # conserve total volume: repay pulled-forward units
 _IV_MIRROR = False        # only act when the boards look near-mirrored
 _IV_MIRROR_STEPS = (216, 240, 264)
 _IV_MIN_OBS = 3
+# Front-running only pays while there is a price to win. Once a product sits
+# near its floor both players clear at the same few dollars, so dumping buys
+# nothing and drives our own later units down with it. Measured in a real ladder
+# loss: FERTILIZER went 43 -> 26 -> 10 -> 1 while we sold 2,738 units to the
+# opponent's 1,697, and the game turned in exactly that window.
+# kawa ships the same idea as _PREEMPT_MIN_PRICE_RATIO but leaves it at 0.0.
+_IV_MIN_PRICE = 0.0
+# Market orders settle in list order, so a slot's position is a price. Our dumps
+# were appended last, behind the tape's own sells, which means our units clear
+# into a book those sells already pushed down. Moving them to the front is safe
+# in the direction that matters: the earlier failure was moving the tape's OWN
+# sells behind its buys and starving them of cash -- putting extra sells first
+# gives the tape's buys MORE cash, not less.
+_IV_SLOT_FIRST = False
+_IV_BASE_PRICE = {"MELON": 250, "MILK": 160, "STRAWBERRY": 120, "WOOL": 200,
+                  "FERTILIZER": 100, "WHEAT": 25, "EGG": 50, "CARROT": 35,
+                  "TOMATO": 60}
+_IV_STRUCT = False      # predict from the opponent's visible tiles too
+_IV_STAGED = False      # split the dump into two tranches instead of one
 _IV_PREMIUM = ('MELON', 'MILK', 'STRAWBERRY', 'WOOL', 'FERTILIZER')
 _IV_DEBT = {}
 _IV_MIRRORED = [None]
@@ -1098,6 +1117,48 @@ def _iv_near_mirror(farms, seat):
     return d <= 6
 
 
+_IV_ANIMAL = {"GOOSE": ("EGG", 4, 1), "COW": ("MILK", 8, 2), "SHEEP": ("WOOL", 6, 3)}
+_IV_CROP = {"WHEAT": (2, 4, 0), "CARROT": (2, 3, 0), "TOMATO": (8, 8, 1),
+            "STRAWBERRY": (10, 10, 2), "MELON": (10, 12, 0)}
+
+
+def _iv_struct_next(item, farms, seat, step):
+    """Next day the opponent's *visible* tiles produce `item`.
+
+    The cadence predictor only sees what they already sold; this sees what they
+    are about to have. An animal placed on day p yields on
+    p + first_yield_day + k*interval by the engine's own refresh rule, and a
+    crop's first yield is fixed by its growth table -- both readable straight
+    off the public board before a single unit has been sold.
+    """
+    if len(farms) < 2:
+        return None
+    opp = farms[1 - seat]
+    day = step // 24
+    best = None
+    for row in (opp.get("tiles") or []):
+        for t in row:
+            if not isinstance(t, dict):
+                continue
+            a = t.get("animal")
+            if a and a in _IV_ANIMAL and _IV_ANIMAL[a][0] == item:
+                _, first, iv = _IV_ANIMAL[a]
+                start = int(t.get("placed_day", day)) + first
+                d = start if start >= day else start + iv * (((day - start) // iv) + 1)
+                if t.get("yield_units", 0) > 0:
+                    d = day
+                best = d if best is None else min(best, d)
+            elif t.get("kind") == "PLANT" and t.get("crop") == item:
+                first, mx, iv = _IV_CROP.get(item, (99, 99, 0))
+                start = int(t.get("planted_day", day)) + first
+                d = start if start >= day else (
+                    start + iv * (((day - start) // iv) + 1) if iv else day)
+                if t.get("yield_units", 0) > 0:
+                    d = day
+                best = d if best is None else min(best, d)
+    return None if best is None else best * 24
+
+
 def _iv_predict(item, step):
     h = _IV["hits"].get(item) or []
     if len(h) < _IV_MIN_OBS:
@@ -1160,12 +1221,30 @@ def agent(obs):
             if len(orders) >= 10 or item in already:
                 continue
             nxt = _iv_predict(item, step)
+            if _IV_STRUCT:
+                sn = _iv_struct_next(item, farms, seat, step)
+                # take whichever signal fires first -- behaviour or board state
+                if sn is not None and (nxt is None or sn < nxt):
+                    nxt = sn
             if nxt is None or not (step < nxt <= step + _IV_LEAD):
                 continue
+            if _IV_MIN_PRICE > 0:
+                px = float((market.get("prices") or {}).get(item, 0) or 0)
+                base = _IV_BASE_PRICE.get(item, 100)
+                if px < base * _IV_MIN_PRICE:
+                    continue
             have = int(shed.get(item, 0) or 0)
-            qty = int(have * _IV_DUMP_FRAC)
+            frac = _IV_DUMP_FRAC
+            if _IV_STAGED:
+                # two tranches: a smaller lead-in avoids driving the price off a
+                # cliff with one block, so the later units clear higher
+                frac = _IV_DUMP_FRAC * (0.5 if nxt - step > 1 else 1.0)
+            qty = int(have * frac)
             if qty > 0:
-                orders.append(["SELL", item, qty])
+                if _IV_SLOT_FIRST:
+                    orders.insert(0, ["SELL", item, qty])
+                else:
+                    orders.append(["SELL", item, qty])
                 if _IV_REPAY:
                     _IV_DEBT[item] = _IV_DEBT.get(item, 0) + qty
 
