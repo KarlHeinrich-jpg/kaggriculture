@@ -58,6 +58,9 @@ from route.opponent import OpponentModel  # noqa: E402
 from route.router import TURNS_PER_DAY, Task, Unit, partition, plan_day  # noqa: E402
 from dynamic.router2 import plan_day as plan_day2  # noqa: E402
 from dynamic.router2 import task_value as _task_value2  # noqa: E402
+from dynamic import market_model as MM  # noqa: E402
+from dynamic.opp_state import OppState  # noqa: E402
+from dynamic import task_value as TV  # noqa: E402
 
 # ------------------------------------------------------------ engine mirrors
 
@@ -197,6 +200,83 @@ PLANT_MISS_TOLERANCE = 0
 # Buying feed and selling it back is pure loss on the order slots and the cash
 # float even though the engine prices a round trip at par.
 WHEAT_SELL_SURPLUS = 0
+# MARGINAL-VALUE SELLING (dynamic/market_model.py). 0 keeps the fixed
+# RESERVE_PRICE gate, which compares the quoted price against a constant.
+#
+# That constant answers the wrong question. Market inventory is an accumulator
+# and _town_consume subtracts the same amount whatever we do, so a unit sold now
+# clears every LATER sale by both players one slope lower, for the rest of the
+# season. The value of selling is therefore
+#
+#     MV = P(inv) + alpha * |P'(inv)| * (N_them - N_us)
+#
+# and the sign of the second term is the whole story: pushing volume into a book
+# we ourselves still have to sell into is self-harm, which is what the wheat-
+# flooding and capped-book-flooding experiments were measuring. On WOOL at its
+# usual late inventory the same $24 quote carries an MV of +343 if the opponent
+# has 50 units still coming and -295 if we do -- a fixed reserve of 53 answers
+# neither case.
+#
+# MV is compared against the SAME reserve the fixed gate uses, so this changes
+# the valuation and not the thresholds.
+# Measured, 3 seeds, us against kawa (dynamic/revenue_audit.py):
+#
+#   MILK   we sell 156 at $138, they sell 265 at $141  ->  margin  -15,789
+#   the TAPE against the same opponent floods milk 248 units, both players
+#   realise $40, and the margin on the product is -28.
+#
+# The tape does not win milk. It NEUTRALISES it, and that is worth +15,761
+# because the deficit it erases is larger than the revenue it gives up. Same
+# shape on STRAWBERRY: we realise $168 to their $188 over 166 units to their
+# 274, for -23,625; crushing that book to ~$60 would leave -6,480.
+#
+# So the posture has to be signed, and MV already carries the sign:
+#   N_them > N_us  -> SUPPRESS. Sell now, skip the front-run hold. Every unit
+#                     costs them more than it costs us.
+#   N_them < N_us  -> METER. Sell at the town's absorption rate so the book
+#                     never runs away from us; we are the one who has to sell
+#                     into it later.
+# The earlier flooding experiments that measured negative all flooded by
+# PRODUCING more or by buying to dump. This is neither: it is the same units,
+# re-timed, and it costs nothing to try.
+MV_MARKET = 0
+MV_ALPHA = 1.0          # trust in the suppression term
+MV_OPP_GAIN = 1.0       # scales N_them; the structural forecast under-reads ~2.5x
+MV_SELF_GAIN = 1.0      # scales N_us
+# WHERE THIS HAS TO ACT. Attributing every unit we offer to the branch that
+# offered it (3 seeds, vs kawa) gives:
+#
+#     shed-panic dump  79%      terminal dump  19%      the price gate  2-3%
+#
+# The reserve price, the front-run hold and the opponent's reserve scale
+# together govern one sale in forty. That is why every sell-policy sweep in
+# this project has come back with identical rows: the gate is not binding, it
+# is nearly dead code. The agent's real sell policy is "the shed passed 20% ->
+# dump everything", which is also, by accident, why our realised $/unit is
+# HIGHER than the tape's -- dumping in small frequent batches meters the book.
+#
+# So the posture is applied where the volume actually is: on a panic turn, sell
+# in MV order and stop as soon as the shed is back under the threshold. The
+# books the opponent out-supplies get dumped (suppression is what they are for);
+# the books we out-supply are kept for later, subject to the 100-item cap that
+# discards anything we fail to clear by nightfall.
+MV_POSTURE = 1          # 0 = MV only re-prices the gate; 1 = it also sets timing
+MV_METER_MULT = 1.0     # units per turn when metering, as a multiple of drain
+MV_PANIC_ORDER = 0      # 1 = clear the shed in MV order, only as far as needed
+
+# ECONOMIC TASK VALUE (dynamic/task_value.py). 0 keeps OP_VALUE, which ranks a
+# day's work by op NAME: a melon harvest and a wheat harvest both score 900,
+# though one is six units at $250 and the other six at $25. 1 prices every task
+# through the live market instead, which is where the scheduler's own objective
+#
+#     J = sum_task V_task - lambda * C_move
+#
+# gets its V. Survival tasks (a plant one missed watering from being a weed, an
+# animal one missed feed from escaping) stay ranked above every revenue
+# comparison, because the engine's rule is absolute.
+ECON_VALUE = 0
+ECON_ALPHA = 1.0        # suppression trust inside the task price
+ECON_LAMBDA = 0.0       # dollars charged per step of travel; 0 = router decides
 OPP_MODEL = 1
 OPP_SCALE_LO = 0.65
 OPP_SCALE_HI = 1.30
@@ -226,7 +306,10 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "RESERVE_PRICE_SCALE", "COLLECT_FERT_VALUE",
                 "IDLE_TOPUP", "IDLE_MAX_TRAVEL", "FRONT_RUN", "TERMINAL_STEP",
                 "OPP_MODEL", "OPP_SCALE_LO", "OPP_SCALE_HI", "OPP_HORIZON_DAYS",
-                "PLANT_MISS_TOLERANCE", "WHEAT_SELL_SURPLUS")
+                "PLANT_MISS_TOLERANCE", "WHEAT_SELL_SURPLUS",
+                "MV_MARKET", "MV_ALPHA", "MV_OPP_GAIN", "MV_SELF_GAIN",
+                "MV_POSTURE", "MV_METER_MULT", "MV_PANIC_ORDER",
+                "ECON_VALUE", "ECON_ALPHA", "ECON_LAMBDA")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -277,7 +360,7 @@ def _reset_state():
     S.update({"layout": None, "day": -1, "tours": {}, "progress": {},
               "target_units": 1, "bought": {a: 0 for a in ANIMALS},
               "pending": [], "idle_target": {},
-              "opp": OpponentModel(), "last_sales": {}})
+              "opp": OpponentModel(), "oppst": OppState(), "last_sales": {}})
 
 
 _reset_state()
@@ -403,7 +486,9 @@ def _should_harvest(tile, crop, day):
 
 
 def _mk(pos, ops, carry=None, tile=None, day=0):
-    if DYNAMIC_VALUE and tile is not None:
+    if ECON_VALUE and S.get("econ") is not None:
+        value = TV.value(tile, ops, day, S["econ"], OP_VALUE)
+    elif DYNAMIC_VALUE and tile is not None:
         value = _task_value2(tile, ops, day, OP_VALUE)
     else:
         value = max(OP_VALUE.get(o[0], 100.0) for o in ops)
@@ -877,7 +962,24 @@ def _town_demand_now(item, step, shops):
     return demand
 
 
-def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None):
+def _mv_supply(opp_farm, item, day):
+    """N_them: units of `item` the opponent can still put on the market."""
+    return S["oppst"].supply(opp_farm, item, day, gain=MV_OPP_GAIN)
+
+
+def _mv_own_supply(farm, private, item, day):
+    """N_us: what WE still have to sell -- the shed plus our own tiles' output.
+
+    Same estimator as the opponent side, run on our own farm, so the two terms
+    of the suppression difference are measured the same way and a bias in the
+    forecast largely cancels between them.
+    """
+    held = int((private.get("shed") or {}).get(item, 0))
+    return held + MV_SELF_GAIN * S["oppst"].forecast_production(farm, item, day)
+
+
+def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None,
+                   market_inv=None):
     orders = []
     money = farm["money"]
     shed = private.get("shed") or {}
@@ -967,12 +1069,33 @@ def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None):
     sold = {}
     ramp = _ramp(day)
     panic = shed_used > SHED_CAPACITY * SHED_PANIC_FRACTION
+
+    order = SELL_PRIORITY_ORDER
+    room_needed = 0
+    if MV_PANIC_ORDER and panic and opp_farm is not None and market_inv is not None:
+        # Highest marginal value first. MV already carries the sign of the
+        # suppression term, so a book the opponent still has to sell into sorts
+        # above one we do -- exactly the pair we want dumped and kept.
+        def _mv_of(it):
+            n = int(shed.get(it, 0))
+            if n <= 0:
+                return -1e9
+            return MM.sale_value(it, int(market_inv.get(it, MM.MARKET_I0)),
+                                 _mv_own_supply(farm, private, it, day),
+                                 _mv_supply(opp_farm, it, day),
+                                 discount=MV_ALPHA)
+        order = sorted(SELL_PRIORITY_ORDER, key=_mv_of, reverse=True)
+        room_needed = int(shed_used - SHED_CAPACITY * SHED_PANIC_FRACTION)
     # Reward is money on hand, so anything still in the shed at the buzzer is
     # worth exactly nothing. Liquidate unconditionally near the end.
     terminal = step >= TERMINAL_STEP
-    for item in SELL_PRIORITY_ORDER:
+    freed = 0
+    for item in order:
         if len(orders) >= MAX_ORDERS:
             break
+        if room_needed and freed >= room_needed:
+            panic = False        # enough space recovered; the gate decides the rest
+            room_needed = 0
         have = int(shed.get(item, 0))
         if have <= 0:
             continue
@@ -999,22 +1122,41 @@ def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None):
                 continue
         scale = 1.0
         glut = False
-        if OPP_MODEL and opp_farm is not None:
+        suppress = None
+        qty = int(have)
+        if MV_MARKET and opp_farm is not None and market_inv is not None:
+            inv = int(market_inv.get(item, MM.MARKET_I0))
+            n_us = _mv_own_supply(farm, private, item, day)
+            n_them = _mv_supply(opp_farm, item, day)
+            value = MM.sale_value(item, inv, n_us, n_them, discount=MV_ALPHA)
+            suppress = n_them > n_us
+            if MV_POSTURE and not suppress and not panic:
+                # We are the larger remaining supplier: this book is ours to
+                # sell into later, so do not run it away from ourselves.
+                rate = MV_METER_MULT * MM.drain_rate(item, shops) / float(TURNS_PER_DAY)
+                qty = int(min(have, max(1, round(rate * TURNS_PER_DAY / 6.0))))
+        elif OPP_MODEL and opp_farm is not None:
             scale = S["opp"].reserve_scale(opp_farm, item, day, step, shops,
                                            lo=OPP_SCALE_LO, hi=OPP_SCALE_HI,
                                            horizon_days=int(OPP_HORIZON_DAYS))
             glut = scale < 1.0
+            value = prices.get(item, 0)
+        else:
+            value = prices.get(item, 0)
         # Hold one step for the town's tick to lift the price -- unless the
         # opponent is about to flood this product anyway, in which case waiting
         # just means selling after them into a worse market.
-        if (FRONT_RUN and item in FRONT_RUN_ITEMS and not panic and not glut
-                and _town_demand_now(item, step, shops) > 0):
+        hold = (FRONT_RUN and item in FRONT_RUN_ITEMS and not panic and not glut
+                and _town_demand_now(item, step, shops) > 0)
+        if MV_POSTURE and suppress:
+            hold = False          # racing them is the entire point
+        if hold:
             continue
         reserve = RESERVE_PRICE.get(item, 20) * RESERVE_PRICE_SCALE * ramp * scale
-        price = prices.get(item, 0)
-        if price >= reserve or panic:
-            orders.append(["SELL", item, int(have)])
-            sold[item] = sold.get(item, 0) + int(have)
+        if value >= reserve or panic:
+            orders.append(["SELL", item, qty])
+            sold[item] = sold.get(item, 0) + qty
+            freed += qty
     S["last_sales"] = sold
     return orders[:MAX_ORDERS]
 
@@ -1072,6 +1214,20 @@ def agent(obs):
         S["layout"] = (_plan_layout(board_size, S["plan"]) if S["plan"]
                        else _build_layout(board_size))
 
+    if ECON_VALUE:
+        # Built before the day is planned, from the market as it stands this
+        # morning. N_them is what the opponent can still put on each book and
+        # N_us is our own remaining supply, measured the same way so the bias in
+        # the structural forecast largely cancels between them.
+        opp = farms[1 - player] if len(farms) > 1 else None
+        inv = (obs.get("market") or {}).get("inventory") or {}
+        shops = tuple((obs.get("town") or {}).get("unlocked_shops") or ())
+        n_us, n_them = {}, {}
+        for it in MM.PRODUCTS:
+            n_us[it] = _mv_own_supply(farm, private, it, day)
+            n_them[it] = _mv_supply(opp, it, day) if opp is not None else 0.0
+        S["econ"] = TV.Ctx(inv, shops, day, n_us, n_them, alpha=ECON_ALPHA)
+
     if S["day"] != day:
         S["day"] = day
         _plan_day(farm, private, day, board_size)
@@ -1091,12 +1247,22 @@ def agent(obs):
     town = obs.get("town") or {}
     shops = tuple(town.get("unlocked_shops") or ())
     opp_farm = farms[1 - player] if len(farms) > 1 else None
-    if OPP_MODEL:
+    inventory = market_obj.get("inventory") or {}
+    if OPP_MODEL or MV_MARKET or ECON_VALUE:
         # Our own realised sales are within a unit or two of what we requested:
         # we only ever ask for exactly what the shed holds, so the per-unit
         # commit loop fills the order.
-        S["opp"].observe(market_obj.get("inventory") or {}, day * 24 + hour,
-                         shops, S.get("last_sales") or {})
-    orders = _market_orders(farm, private, day, hour, prices, shops, opp_farm)
+        S["opp"].observe(inventory, day * 24 + hour, shops,
+                         S.get("last_sales") or {})
+    if (MV_MARKET or ECON_VALUE) and opp_farm is not None:
+        # Must run EVERY turn: the harvest measurement is an intra-day drop in
+        # the opponent's tile yield_units, and a skipped turn merges a harvest
+        # into a night refresh and loses it.
+        if S["opp"].recent and S["opp"].recent[-1][0] == day * 24 + hour:
+            S["oppst"].record_sales(S["opp"].recent[-1][1])
+        S["oppst"].observe(opp_farm, day, hour)
+        S["oppst"].reconcile(prices, len(opp_farm.get("hands") or []))
+    orders = _market_orders(farm, private, day, hour, prices, shops, opp_farm,
+                            inventory)
 
     return {"farmer": farmer_action, "hands": hands_actions, "market": orders}

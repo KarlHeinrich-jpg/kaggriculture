@@ -876,3 +876,162 @@ shift. It is unfixable here: DAgger needs the expert to label the states the
 learner reaches, and a fixed 719-step action list cannot be queried off its own
 trajectory. Adding data does not help; more on-distribution samples say nothing
 about off-distribution states.
+
+---
+
+## 22. The suppression math, and why neither half of the architecture can use it (2026-08-20)
+
+Built to the plan of pricing every decision through the real market: an exact
+market model, an opponent inventory tracker, and both wired into the market
+controller and the day scheduler. **The math is right, both wiring points are
+measured inert, and the reasons are structural rather than parametric.**
+
+### The marginal value of a sale is not its price
+
+`dynamic/market_model.py` reproduces the engine's `market_price` bit for bit
+(0 mismatches over 9 products x 4,001 inventories) and adds the analytic slope.
+Market inventory is a pure accumulator -- `_town_consume` subtracts the same
+amount whatever we do -- so an extra unit sold now clears every LATER sale by
+BOTH players one slope lower, for the rest of the season. Differentiating the
+margin gives
+
+    MV = P(inv) + alpha * |P'(inv)| * (N_them - N_us)
+
+The suppression term is **signed on the difference of the two remaining
+supplies**. That single fact retro-explains three earlier negatives: flooding a
+book we ourselves still have to sell into is self-harm, which is exactly what
+wheat flooding (-95,916) and capped-book flooding (-81,980) were measuring.
+
+**Section 20's front-run audit was reading the wrong cause.** It sorted
+realised-price edge by market DEPTH; the real variable is NON-RECOVERY, and
+depth only correlates with it. Season town demand against units-to-floor:
+
+    MELON       30 demand / 158 to floor   ratio 0.19   audit +24.3
+    FERTILIZER   0        / 493            ratio 0.00   audit  +1.1
+    WOOL       246        /  59            ratio 4.2    audit  -2.2
+    MILK       331        /  76            ratio 4.4    audit  -2.8
+    STRAWBERRY 422        /  62            ratio 6.8    audit  -2.1
+
+MELON is in **no shop's product list** -- only the town centre's 1-per-24-steps
+touches it -- and FERTILIZER has no buyer at all. Those two are the only books
+where being first is worth anything, and they are exactly the two the audit
+scored positive. The three it scored negative are the three the town refills
+4-7x over. Perfect ordering, and it is derivable without playing a game.
+
+### The opponent's holdings are recoverable, and they are always small
+
+`dynamic/opp_state.py`. Their tiles are fully public, including `yield_units`,
+`pending_care_bonus` and `money`. Within a day `yield_units` can only fall, and
+only HARVEST lowers it, so summing intra-day drops measures their harvests
+**exactly** -- validated in `dynamic/opp_state_test.py`, where the residual
+mirrors the sales side unit for unit.
+
+Two corrections tame the sales side, which is blind only at the $1 floor:
+floor reconciliation (a floored book cannot be suppressed anyway -- `slope()` is
+0 there) and the shed cap. `_drop_inventories_to_shed` keeps **100 items TOTAL
+across all products and discards the overflow**, so no estimate above ~100 is
+physically possible; that alone cut MILK's drift from 267 units to 24.
+
+The useful finding is what survives: **the opponent can never be sitting on a
+hoard**, so `N_them` is dominated by what their tiles will still produce, not by
+what they hold.
+
+- The structural forecast under-reads the truth ~2.5x (72.8 strawberry against
+  an actual 192.7) but has RANK: correlation 0.66-0.82 on the five products
+  that matter. A scalar gain fixes a bias, so the bias was left to calibration.
+- **Extrapolating their exact observed harvest rate instead is worse.** It
+  halves the bias and takes strawberry's correlation from 0.66 to -0.00 and
+  melon's from 0.80 to -0.04. Kept behind `blend`, defaulted off.
+
+### Why the market controller cannot use any of it
+
+Attributing every unit we offer to the branch that offered it (3 seeds, vs kawa):
+
+    shed-panic dump 79%     terminal dump 19%     the price gate 2-3%
+
+The reserve price, the front-run hold and the opponent's reserve scale together
+govern **one sale in forty**. The agent's real sell policy is "the shed passed
+20% -> dump everything", and that is also, by accident, why our realised $/unit
+is HIGHER than the tape's: dumping in small frequent batches meters the book.
+
+This is the true cause of the "identical rows" symptom in section 21. The gate
+is not merely unbinding on some parameter settings; it is nearly dead code.
+Every MV variant lands in noise -- MV ordering of the panic dump -34 (t=-0.0),
+alpha 0/0.5/1/2 all within 200, `SHED_PANIC_FRACTION` 0.10 exactly +0.
+
+Metering is worse than inert: -32,749 (t=-12.7). Holding stock fills the shed
+and stalls production, the same mechanism section 17 round 6 measured.
+
+### Why the scheduler cannot use it either
+
+`dynamic/task_value.py` prices every task through the live market -- a melon
+harvest and a wheat harvest score 900 apiece under `OP_VALUE`, though one is six
+units at $250 and the other six at $25. It is correct and it is **exactly +0
+over 144 paired games**, because:
+
+| day | tiles with work | op-turns wanted | crew turn cap | utilisation |
+|---|---|---|---|---|
+| 12 | 63 | 102 | 288 | 35% |
+| 18 | 63 | 92 | 264 | 35% |
+| 24 | 57 | 110 | 264 | 42% |
+
+**Mean 35%, max 43%, and demand exceeds capacity on 0 days of 30.** Task value
+only decides which work gets DROPPED, and nothing is ever dropped. `partition`
+assigns by angular sweep; value reaches `build_tour` only on over-subscription.
+
+So the whole objective `J = sum V_task - lambda*C_move` optimises an allocation
+problem with 65% slack, and every coefficient in it (lambda, alpha, K, gamma,
+beta) is unidentifiable by construction. This also explains `MIN_CREW` at -13k
+to -52k: we already hire hands with nothing to do.
+
+### What the audit says the gap actually is
+
+`dynamic/revenue_audit.py` prices both players' sales through the commit hook.
+Against kawa, 3 seeds:
+
+| | our units | our $ | their units | their $ |
+|---|---|---|---|---|
+| dynamic scheduler | 1,132 | 89,008 | 1,521 | **137,382** |
+| the tape | 1,704 | 91,889 | 1,704 | **91,734** |
+
+**Our own economy is fine -- our bank is 77,614 against the tape's 71,544 in the
+same matchup.** The entire gap is the second column. MILK is the clearest case:
+
+    against us      we sell 156 @ $138, they sell 265 @ $141   margin  -15,789
+    against the tape   248 @ $40,          249 @ $40           margin      -28
+
+**The tape does not win milk. It neutralises it**, and that is worth +15,761
+because the deficit it erases is larger than the revenue it gives up. Same shape
+on strawberry (-23,625, crushable to about -6,480).
+
+That is the mechanism, stated exactly, and it needs volume we do not have --
+1,132 units against 1,704. Suppression cannot be bought (`BUY_PRODUCT` quotes
+post-buy, so a round trip nets zero) and cannot be timed (we already dump
+continuously). **It has to be PRODUCED.**
+
+### Refuted tonight, with controls
+
+| lever | result |
+|---|---|
+| MV ordering of the shed-panic dump | -34 (t=-0.0) |
+| MV metering when we out-supply them | -32,749 (t=-12.7) |
+| MV re-pricing the sell gate, alpha 0..2 | all exactly +0 (gate not binding) |
+| economic task value in the scheduler | exactly +0 (capacity not binding) |
+| economic task value + triage | -869 (t=-1.1) |
+| WHEAT priority 0.014 -> 0.85 | **-75,378** (displaces melon/strawberry) |
+| ...with 12 / 18 wheat tiles | -123,861 / -91,455 |
+| 12 wheat tiles at current priority | -4,161 |
+| 6 geese (EGG trades $89, nobody produces it) | -49,999 |
+| feed buffer 1.0 -> 2.5 | -30,343 |
+
+Also measured and NOT a defect: **shed-overflow discards are 15 units a game
+against the tape's 21.** The nightly 100-item cap is not eating our output.
+
+### Status
+
+The suppression theory is sound and now has exact tooling behind it. Neither
+the market controller nor the day scheduler is the place it can act, and both
+were shown so by measurement rather than argument. The binding constraint is
+unchanged from section 19 and is now quantified from a second direction:
+**produce more units profitably.** Until that moves, this line stays at -90,650
+paired against the 9-agent pool while the shipped tape+market build is +9,016.
