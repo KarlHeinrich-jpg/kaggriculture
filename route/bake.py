@@ -72,7 +72,8 @@ def bake(params=None, out=OUT, note=None):
                                   adapt=params.get("IV_ADAPT", 0),
                                   marginal_floor=params.get("IV_MARGINAL_FLOOR", 0.25),
                                   vol_mult=params.get("IV_VOL_MULT", 1.0),
-                                  max_qty=params.get("IV_MAX_QTY", 60)))
+                                  max_qty=params.get("IV_MAX_QTY", 60),
+                                  pred_mode=params.get("IV_PRED_MODE", 0)))
         if force:
             # Pin the tape instead of letting the shop draw choose it.
             f.write("\n# --- tape selection override ---\n")

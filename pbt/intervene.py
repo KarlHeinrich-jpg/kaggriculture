@@ -96,6 +96,15 @@ _IV_HOLD_STOP_STEP = __HOLDSTOP__
 # what we get selling ahead of them, minus what the same unit fetches after
 # their block lands. Dump while that difference is positive and the unit still
 # clears above the floor.
+# Cadence estimator. The median gap is robust to outliers but slow to react if
+# the opponent shifts strategy mid-season. 0 = median (shipped), 1 = linearly
+# weighted toward recent gaps, 2 = most recent gap only.
+#
+# Prior: IV_LEAD 2/3/4 were all measured and differ little with 3 best, which
+# says timing PRECISION is not the binding constraint. But the front-run audit
+# shows position is what this layer actually buys (we clear ahead on 94-99% of
+# firings), so the predictor is at least aimed at the right thing.
+_IV_PRED_MODE = __PREDMODE__
 _IV_ADAPT = __ADAPT__
 _IV_MARGINAL_FLOOR = __MARGFLOOR__   # stop once a unit fetches < this x base
 _IV_VOL_MULT = __VOLMULT__           # scale on the inferred opponent volume
@@ -317,8 +326,14 @@ def _iv_predict(item, step):
     gaps = [b - a for a, b in zip(h, h[1:]) if b > a]
     if not gaps:
         return None
-    gaps.sort()
-    period = gaps[len(gaps) // 2]
+    if _IV_PRED_MODE == 2:
+        period = gaps[-1]
+    elif _IV_PRED_MODE == 1:
+        w = list(range(1, len(gaps) + 1))
+        period = int(round(sum(g * x for g, x in zip(gaps, w)) / sum(w)))
+    else:
+        sg = sorted(gaps)
+        period = sg[len(sg) // 2]
     if period <= 0:
         return None
     return h[-1] + period
@@ -462,7 +477,8 @@ def intervene_src(enabled=1, dump_frac=0.8, lead=1, squeeze=0,
                   min_price=0.0, slot_first=0, seat0_dump=None,
                   seat0_min_price=None, hold_ratio=0.0, hold_shed_max=70,
                   hold_stop_step=600, stop_day=0, late_dump=0.0,
-                  adapt=0, marginal_floor=0.25, vol_mult=1.0, max_qty=60):
+                  adapt=0, marginal_floor=0.25, vol_mult=1.0, max_qty=60,
+                  pred_mode=0):
     return (_TEMPLATE.replace("__ENABLED__", str(bool(enabled)))
             .replace("__DUMP__", repr(float(dump_frac)))
             .replace("__LEAD__", str(int(lead)))
@@ -484,4 +500,5 @@ def intervene_src(enabled=1, dump_frac=0.8, lead=1, squeeze=0,
             .replace("__ADAPT__", str(bool(adapt)))
             .replace("__MARGFLOOR__", repr(float(marginal_floor)))
             .replace("__VOLMULT__", repr(float(vol_mult)))
-            .replace("__MAXQTY__", str(int(max_qty))))
+            .replace("__MAXQTY__", str(int(max_qty)))
+            .replace("__PREDMODE__", str(int(pred_mode))))

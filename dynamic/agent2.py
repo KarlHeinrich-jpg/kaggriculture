@@ -56,6 +56,8 @@ from route.geom import (SHED_SET, SHED_TILES, SPAWN, dist, dist_to_shed,  # noqa
                         quadrant_of, steps_between)
 from route.opponent import OpponentModel  # noqa: E402
 from route.router import TURNS_PER_DAY, Task, Unit, partition, plan_day  # noqa: E402
+from dynamic.router2 import plan_day as plan_day2  # noqa: E402
+from dynamic.router2 import task_value as _task_value2  # noqa: E402
 
 # ------------------------------------------------------------ engine mirrors
 
@@ -135,6 +137,18 @@ SCHEDULE_DRIVEN = 1             # 0 falls back to route/agent.py's demand sizing
 # SEASON_PLAN is {(x,y): (role, day)}; empty falls back to _build_layout.
 SEASON_PLAN = {}
 USE_PLAN = 0                    # 0 = ignore the plan entirely (formula layout)
+
+# Density-preserving scheduler (dynamic/router2.py). 0 = route/router.py.
+# route/router.py fits an over-subscribed day by dropping the lowest-value
+# tasks one at a time, which spreads the shortfall across every tile. That is
+# the wrong shape of sacrifice here: the engine kills a plant on its second
+# consecutive unwatered night, so a tile served on 70% of days is a dead tile,
+# and 73 tiles at 70% care is 73 losses where 50 at full care would be 50
+# survivors. USE_TRIAGE abandons whole tiles instead, cheapest-value-per-turn
+# first, and never abandons one whose asset dies today.
+USE_TRIAGE = 0
+KEEP_RATIO = 1.0                # fraction of crew capacity to plan against
+DYNAMIC_VALUE = 0               # value tasks from tile state, not op name
 PLAN_GATE_DAYS = 1              # honour the plan's come-online day
 PLAN_SLACK = 0                  # allow planting this many days early
 HIRE_BUDGET_FRACTION = 0.35
@@ -204,6 +218,7 @@ OP_VALUE = {
 
 _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "USE_PLAN", "PLAN_GATE_DAYS", "PLAN_SLACK",
+                "USE_TRIAGE", "KEEP_RATIO", "DYNAMIC_VALUE",
                 "HIRE_BUDGET_FRACTION", "SPEND_RESERVE",
                 "SURVIVAL_RESERVE_FRACTION", "WHEAT_FEED_BUFFER_MULT",
                 "LAND_BUY_CASH_MULTIPLE", "ANIMAL_BUY_CAP_PER_TURN", "SEED_BATCH_PER_TURN", "BUY_ANIMALS_FIRST",
@@ -367,8 +382,11 @@ def _should_harvest(tile, crop, day):
     return age >= cd["max_yield_day"] or tile["yield_units"] >= cd["max_yield"]
 
 
-def _mk(pos, ops, carry=None):
-    value = max(OP_VALUE.get(o[0], 100.0) for o in ops)
+def _mk(pos, ops, carry=None, tile=None, day=0):
+    if DYNAMIC_VALUE and tile is not None:
+        value = _task_value2(tile, ops, day, OP_VALUE)
+    else:
+        value = max(OP_VALUE.get(o[0], 100.0) for o in ops)
     return Task(pos, ops, carry=carry, value=value)
 
 
@@ -403,7 +421,7 @@ def _build_tasks(farm, private, day, board_size):
         if role in ANIMALS:
             spec = ANIMALS[role]
             if tile is None:
-                tasks.append(_mk(pos, [["BUILD_" + spec["structure"]]]))
+                tasks.append(_mk(pos, [["BUILD_" + spec["structure"]]], tile=tile, day=day))
             elif isinstance(tile, dict) and tile.get("animal") == role:
                 core = []
                 if not tile.get("fed_today"):
@@ -414,15 +432,15 @@ def _build_tasks(farm, private, day, board_size):
                     core.append(["HARVEST"])
                 if core:
                     carry = {"WHEAT": 1} if ["FEED"] in core else None
-                    tasks.append(_mk(pos, core, carry=carry))
+                    tasks.append(_mk(pos, core, carry=carry, tile=tile, day=day))
                 if tile.get("fertilizer_available"):
-                    tasks.append(_mk(pos, [["COLLECT_FERTILIZER"]]))
+                    tasks.append(_mk(pos, [["COLLECT_FERTILIZER"]], tile=tile, day=day))
             elif isinstance(tile, dict) and tile.get("kind") == spec["structure"]:
                 if avail_animal.get(role, 0) > 0:
                     avail_animal[role] -= 1
-                    tasks.append(_mk(pos, [["PLACE", role]], carry={role: 1}))
+                    tasks.append(_mk(pos, [["PLACE", role]], carry={role: 1}, tile=tile, day=day))
             elif isinstance(tile, dict) and "animal" not in tile:
-                tasks.append(_mk(pos, [["DIG"]]))
+                tasks.append(_mk(pos, [["DIG"]], tile=tile, day=day))
             continue
 
         # crop role
@@ -438,7 +456,7 @@ def _build_tasks(farm, private, day, board_size):
                 # WATER must ride along in the same visit: _new_plant starts a
                 # crop at consecutive_unwatered=1, so a seedling left unwatered
                 # on its planting day is already a weed by the nightly refresh.
-                tasks.append(_mk(pos, [["PLANT", role], ["WATER"]]))
+                tasks.append(_mk(pos, [["PLANT", role], ["WATER"]], tile=tile, day=day))
         elif isinstance(tile, dict) and tile.get("kind") == "PLANT":
             crop = tile["crop"]
             ops = []
@@ -454,10 +472,10 @@ def _build_tasks(farm, private, day, board_size):
                 ops.append(["HARVEST"])
             if ops:
                 carry = {"FERTILIZER": 1} if ["FERTILIZE"] in ops else None
-                tasks.append(_mk(pos, ops, carry=carry))
+                tasks.append(_mk(pos, ops, carry=carry, tile=tile, day=day))
         elif isinstance(tile, dict) and tile.get("kind") == "WEED":
             if day <= _last_plant_day(role):
-                tasks.append(_mk(pos, [["DIG"]]))
+                tasks.append(_mk(pos, [["DIG"]], tile=tile, day=day))
     return tasks
 
 
@@ -515,7 +533,14 @@ def _plan_day(farm, private, day, board_size):
     n_units = _size_crew(tasks, farm["money"], farmer_pos, day)
     units = _make_units(n_units, farmer_pos)
     shed_stock = dict(private.get("shed") or {})
-    tours, _undone = plan_day(units, tasks, shed_stock)
+    if USE_TRIAGE:
+        tours, _undone, dropped = plan_day2(units, tasks, shed_stock, day, KEEP_RATIO)
+        # abandoned tiles must also stop pulling seed, or the cash leaks into
+        # ground nobody will ever water
+        S["dropped"] = dropped
+    else:
+        tours, _undone = plan_day(units, tasks, shed_stock)
+        S["dropped"] = set()
     for tour in tours.values():
         tour["carry_list"] = sorted(tour["carry"].items())
     S["tours"] = tours
@@ -774,6 +799,8 @@ def _role_demand(farm, day):
             if not (isinstance(tile, dict) and "animal" in tile):
                 want[role] = want.get(role, 0) + 1
         elif tile is None and day <= _last_plant_day(role):
+            if pos in (S.get("dropped") or ()):
+                continue
             want[role] = want.get(role, 0) + 1
     return want
 

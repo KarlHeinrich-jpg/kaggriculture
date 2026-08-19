@@ -1,0 +1,307 @@
+{
+ "plan": {
+  "4,4": {
+   "role": "PASTURE",
+   "day": 0
+  },
+  "3,4": {
+   "role": "PASTURE",
+   "day": 0
+  },
+  "4,3": {
+   "role": "PASTURE",
+   "day": 0
+  },
+  "3,3": {
+   "role": "PASTURE",
+   "day": 0
+  },
+  "4,1": {
+   "role": "WHEAT",
+   "day": 0
+  },
+  "1,4": {
+   "role": "WHEAT",
+   "day": 0
+  },
+  "2,2": {
+   "role": "WHEAT",
+   "day": 0
+  },
+  "1,3": {
+   "role": "WHEAT",
+   "day": 0
+  },
+  "0,4": {
+   "role": "MELON",
+   "day": 0
+  },
+  "3,0": {
+   "role": "WHEAT",
+   "day": 0
+  },
+  "1,1": {
+   "role": "WHEAT",
+   "day": 0
+  },
+  "1,2": {
+   "role": "MELON",
+   "day": 0
+  },
+  "0,3": {
+   "role": "MELON",
+   "day": 0
+  },
+  "2,0": {
+   "role": "MELON",
+   "day": 0
+  },
+  "0,2": {
+   "role": "MELON",
+   "day": 0
+  },
+  "3,2": {
+   "role": "MELON",
+   "day": 0
+  },
+  "0,0": {
+   "role": "WHEAT",
+   "day": 0
+  },
+  "1,0": {
+   "role": "MELON",
+   "day": 0
+  },
+  "0,1": {
+   "role": "MELON",
+   "day": 0
+  },
+  "2,3": {
+   "role": "MELON",
+   "day": 0
+  },
+  "3,1": {
+   "role": "MELON",
+   "day": 0
+  },
+  "2,1": {
+   "role": "MELON",
+   "day": 0
+  },
+  "4,0": {
+   "role": "MELON",
+   "day": 0
+  },
+  "2,4": {
+   "role": "PASTURE",
+   "day": 2
+  },
+  "4,2": {
+   "role": "PASTURE",
+   "day": 4
+  },
+  "5,4": {
+   "role": "PASTURE",
+   "day": 6
+  },
+  "5,1": {
+   "role": "MELON",
+   "day": 6
+  },
+  "5,0": {
+   "role": "MELON",
+   "day": 6
+  },
+  "5,3": {
+   "role": "PASTURE",
+   "day": 7
+  },
+  "6,4": {
+   "role": "PASTURE",
+   "day": 7
+  },
+  "6,3": {
+   "role": "PASTURE",
+   "day": 7
+  },
+  "6,2": {
+   "role": "MELON",
+   "day": 7
+  },
+  "6,1": {
+   "role": "MELON",
+   "day": 7
+  },
+  "7,3": {
+   "role": "MELON",
+   "day": 7
+  },
+  "6,0": {
+   "role": "STRAWBERRY",
+   "day": 7
+  },
+  "7,0": {
+   "role": "STRAWBERRY",
+   "day": 7
+  },
+  "7,2": {
+   "role": "MELON",
+   "day": 7
+  },
+  "8,0": {
+   "role": "STRAWBERRY",
+   "day": 7
+  },
+  "8,4": {
+   "role": "MELON",
+   "day": 7
+  },
+  "9,4": {
+   "role": "MELON",
+   "day": 7
+  },
+  "7,4": {
+   "role": "PASTURE",
+   "day": 8
+  },
+  "5,2": {
+   "role": "PASTURE",
+   "day": 8
+  },
+  "8,3": {
+   "role": "STRAWBERRY",
+   "day": 8
+  },
+  "7,1": {
+   "role": "STRAWBERRY",
+   "day": 8
+  },
+  "8,1": {
+   "role": "STRAWBERRY",
+   "day": 8
+  },
+  "9,3": {
+   "role": "WHEAT",
+   "day": 8
+  },
+  "4,5": {
+   "role": "PASTURE",
+   "day": 11
+  },
+  "3,5": {
+   "role": "PASTURE",
+   "day": 11
+  },
+  "2,5": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "4,6": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "1,5": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "3,6": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "9,0": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "0,5": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "2,6": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "9,1": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "3,7": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "0,6": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "1,6": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "2,7": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "0,7": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "1,7": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "2,8": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "0,8": {
+   "role": "STRAWBERRY",
+   "day": 11
+  },
+  "4,7": {
+   "role": "STRAWBERRY",
+   "day": 12
+  },
+  "4,8": {
+   "role": "STRAWBERRY",
+   "day": 12
+  },
+  "3,8": {
+   "role": "STRAWBERRY",
+   "day": 12
+  },
+  "3,9": {
+   "role": "STRAWBERRY",
+   "day": 12
+  },
+  "2,9": {
+   "role": "STRAWBERRY",
+   "day": 12
+  },
+  "1,8": {
+   "role": "WHEAT",
+   "day": 13
+  },
+  "4,9": {
+   "role": "WHEAT",
+   "day": 13
+  },
+  "0,9": {
+   "role": "WHEAT",
+   "day": 15
+  },
+  "1,9": {
+   "role": "WHEAT",
+   "day": 15
+  }
+ },
+ "quad_day": {
+  "1": 0,
+  "2": 6,
+  "3": 11
+ },
+ "portfolio": {
+  "PASTURE": 14,
+  "WHEAT": 12,
+  "MELON": 20,
+  "STRAWBERRY": 27
+ }
+}
