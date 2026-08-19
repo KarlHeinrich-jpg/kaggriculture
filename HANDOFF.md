@@ -5,20 +5,33 @@
 
 ---
 
-## 0. READ THIS FIRST — state as of 2026-08-18 evening
+## 0. READ THIS FIRST — state as of 2026-08-19 midday
 
-**Ship this:** `submission/main.py` (155,302 bytes, stdlib-only, entry
-`_submission_entry`). It is the public `multi-route-farming-agent` ("kawa") tape,
-**unmodified**, plus one appended layer — `pbt/intervene.py` — which dumps 80% of
-held stock three turns ahead of the opponent's predicted sale.
+**Ship this:** `submission/main.py` (162,800 bytes, stdlib-only, entry
+`_submission_entry`). Live as Kaggle submission **55614625**. It is the public
+`multi-route-farming-agent` ("kawa") tape plus three appended layers:
+`pbt/intervene.py` (market intervention), `IV_STRUCT` (structural sale forecast),
+and a one-bucket correction to kawa's tape-selection rule.
 
-Worth **+1,611 paired margin over plain kawa, winning 39 of 40 paired seeds**.
-Real ladder wins are decided by margins of +659 to +3,350, so that is the right
-order of magnitude. **It has never been submitted.**
+Rebuild:
+```bash
+cd /home/yilewang/kaggriculture && /home/yilewang/kagg-env/bin/python -c "
+import sys; sys.path.insert(0,'.')
+from route.bake import bake
+print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
+            'INTERVENE':1,'IV_DUMP_FRAC':0.7,'IV_LEAD':3,'IV_FERT':1,
+            'IV_STRUCT':1,'IV_MIN_PRICE':0.20,
+            'TAPE_MAP':['6c12s_4q_second_yarn','6c12s_4q_second_yarn',
+                        '6c8s_3q','10c4s_3q','8c6s_3q']}))"
+```
 
-Both of the user's own submissions (2326.3 and 1898.5) are **unmodified kawa** —
-verified by extracting their tape from replays and matching frame-for-frame
-(section 6). There is no stronger private file to recover.
+### Submissions (Kaggle keeps only the latest 2 active)
+
+| id | what | real-engine gain | ladder |
+|---|---|---|---|
+| **55614625** | + bucket-0 tape swap | **+858** vs 55612771 | active, converging |
+| **55612771** | + IV_STRUCT, dump .70, price gate .20 | +670 vs 55600561 | active, 24/27 (89%) |
+| 55600561 | kawa + intervene (2026-08-18) | — | inactive, peaked 2630.9, 65/84 (77%) |
 
 ### Three rules that override everything else
 
@@ -27,31 +40,52 @@ verified by extracting their tape from replays and matching frame-for-frame
    margin of **-$66**. Use **paired margin**: play both seat orders per seed and
    sum them. A true mirror then scores exactly 0. Section 5.
 2. **The tape cannot be edited** — not farm actions, not hires, not even day 0's
-   market line. Every probe collapsed the run. It can only be replaced wholesale.
-   Section 4.
+   market line. Every probe collapsed the run. It can only be replaced wholesale,
+   or *selected* differently (section 16). Market orders ARE editable; that is
+   what the whole intervention layer is.
 3. **Validate a submission by file path** (`env.run([path, opponent])`), never by
    import. Kaggle resolves a file agent with `get_last_callable`, which walks the
    namespace in **insertion order** — rebinding `agent` in an appended layer does
    *not* move it, so the last *newly defined* callable wins. Section 5.
 
+### Rule 4, learned 2026-08-19 and now the most expensive one
+
+**For a concentrated effect, sample size means FIRING games, not games played.**
+The bucket-0 tape swap changes behaviour in only ~13% of games. Its first
+real-engine gate ran 180 paired games — comfortably past section 5's "≥100
+games" bar — but only ~28 of them fired, and it returned **-18** for something
+worth **+858** at 630 paired. Nothing was broken: the simulator reproduces that
+same -18 on that same sample. Always report how often a change actually fires
+and its CONDITIONAL distribution, not just the mean.
+
+Corollary: two "independent replications" that share an opponent set are not
+independent. +1,889 and +1,966 on disjoint seeds looked conclusive and were both
+drawing the same region; real independence came from changing distribution
+entirely (the 80 real ladder traces).
+
 ### What was actually worth anything
 
-| change | paired margin vs kawa |
-|---|---|
-| ~10 generations of constant search, PBT, tape-selection search | **~0** |
-| market intervention, lead 1, dump 40% | +464 |
-| + lead 3 and FERTILIZER | +1,212 |
-| + dump 80% | **+1,611** |
+| change | measured on | gain |
+|---|---|---|
+| ~10 generations of constant search, PBT, tape-selection search | — | **~0** |
+| market intervention (lead 3, dump 80%, +FERTILIZER) | vs plain kawa | +1,611 |
+| IV_STRUCT + dump .70 + price gate .20 | real engine | **+670** |
+| bucket-0 tape swap | real engine | **+858** |
+| ...the same, across our 80 real ladder games | ladder traces | +429, record 62/80 → 66/80 |
 
-Everything except the market-intervention layer measured as noise once the
-correct metric was used.
+### Corrections to earlier sections of this document
 
-### The one open structural gap
-
-kawa's tapes allocate **12 hand slots**; every ladder opponent runs **14** —
-~22% less labour (2,741 useful actions vs 3,494). `pbt/extract_tape.py` can
-already pull any player's 719-step tape out of a replay and transplant it into
-kawa's runtime layer, so the tooling for a tape swap exists. The tape does not.
+- **Section 0's old "12 vs 14 hand slots" gap is NOT our deficit.** Measured
+  from 23 replays (`planner/analyze_top.py`): we run 277 hires, 12 hands, 2,858
+  useful ops — at or above every ladder leader, and the most ops of anyone. Only
+  ReCurSiON runs 14 hands. The gap is price realisation, not labour.
+- **Section 11's "tape-selection mapping already searched, default wins" is
+  wrong for bucket 0.** Section 16.
+- **Section 12's "IV_STRUCT is ambiguous" was under-sampling.** It is +420 at
+  n=1,440 paired (t=16.3), and shipped.
+- **Section 14's "the market layer is at a local optimum" is now true and
+  proven** — but it was true of the *parameters*, not of structural changes.
+  Section 17.
 
 ---
 
@@ -68,14 +102,7 @@ Machine: **26 physical cores** (52 logical), 187 GB RAM. GPUs unused — the
 workload is single-threaded CPU-bound Python. **Always size pools to 26**;
 48 workers on 26 cores took 6+ minutes to not finish what 26 do in 30s.
 
-Rebuild the submission:
-```bash
-cd /home/yilewang/kaggriculture && /home/yilewang/kagg-env/bin/python -c "
-import sys; sys.path.insert(0,'.')
-from route.bake import bake
-print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
-            'INTERVENE':1,'IV_DUMP_FRAC':0.8,'IV_LEAD':3,'IV_FERT':1}))"
-```
+Rebuild the submission: see section 0 (the parameters changed 2026-08-19).
 
 ## 2. File map
 
@@ -92,8 +119,18 @@ route/opponent.py             EXACT opponent-sales inference (used by the agent)
 route/tournament.py           round-robin harness
 route/batch.py                fixed-matchup batch scorer
 
-route/geom.py|router.py|agent.py   own-plan architecture — ABANDONED, lost 0/36
-pbt/tapesel.py                searchable tape-selection rule (searched; default best)
+route/geom.py|router.py|agent.py   own-plan architecture — still far behind, section 13
+pbt/tapesel.py                tape-selection rule — bucket 0 IS mis-assigned, section 16
+
+planner/simulate.py           FAST pure-Python engine port, ~1,200 steps/s (~9x env.step)
+planner/tests/                test_sim_fidelity (56 replays) + test_agent_fidelity (live play)
+planner/intervene_sweep.py    market-layer sweeps, rounds 1-6, paired margin with CRN
+planner/tape_sweep.py         per-bucket tape argmax  |  tape_map_test.py  fresh-seed check
+planner/ladder_sweep.py       tune against the 80 REAL ladder opponents, not the pool
+planner/replay_counterfactual.py  "would the new agent have won the games we lost?"
+planner/analyze_top.py        realised per-unit prices from replays, us vs the leaders
+planner/decompile.py|spec_extract.py  tape -> explicit schedule spec, and the gap to it
+planner/day_pipeline.py       gated submission (real-engine + file-path gates)
 pbt/tape_edit.py              day-0 market editor (proved the tape is not editable)
 pbt/features.py|cluster.py    6-dim opponent features + K-Means (no signal found)
 pbt/adaptive.py|adversary.py  per-family counter params (tied with plain best)
@@ -291,7 +328,7 @@ The competition permits reusing published notebooks; the user has confirmed they
 want that. The shipped agent is a public tape plus our own market layer, and
 that is understood and intended.
 
-## 9. Next
+## 9. Next (superseded by sections 16-18; see section 0)
 
 1. **Submit and get a real score.** Every local avenue is exhausted; the one
    number we do not have is what the intervention layer is worth on the ladder.
@@ -548,3 +585,126 @@ That is the third refinement of the market layer to land in the noise
 (structural forecast, staged dumping, price gate). **The layer is at a local
 optimum; stop tuning it.** Remaining gains have to come from the schedule, which
 is what `route/` is for.
+
+---
+
+## 16. The tape-selection rule: bucket 0 IS mis-assigned (2026-08-19)
+
+Section 11 recorded the 5-bucket mapping as "already present and already
+optimal — the whole 5-bucket mapping was searched, default wins". That is right
+for four of the five buckets and **wrong for bucket 0**.
+
+`_kawa_route_label` maps the town's shop draw onto one of five tapes. The space
+is 5^5 = 3,125 mappings, which is the wrong way to attack it. Buckets are
+mutually exclusive, so force each tape, record which bucket each game fell into,
+and take the argmax **per bucket** — 5 measurements, not 3,125
+(`planner/tape_sweep.py`).
+
+That naive answer proposed changing three buckets and was wrong on two counts:
+
+1. The argmax is selected on the data it is scored on.
+2. **The bucketing is post-hoc.** `_kawa_route_label` reads the shops unlocked
+   *so far*, so the bucket starts at 4 and moves as shops unlock — the agent
+   switches tapes mid-episode. The tell was in the data: the default agent's
+   bucket-1 mean (21,379) did not equal the mean of the tape the default map
+   assigns to bucket 1 (15,847), which it would have to if the map were static.
+
+Tested properly, as real `TAPE_MAP` variants on seeds disjoint from the
+derivation (`planner/tape_map_test.py`):
+
+| change | vs live | t |
+|---|---|---|
+| **bucket 0 only** | **+1,841** | **13.7** |
+| all three buckets | +1,041 | 3.2 |
+| bucket 1 only | -111 | -0.8 |
+| bucket 2 only | -814 | -6.1 |
+
+Bucket 0 fires when YARN_STORE is the first shop unlocked. The default sends it
+to `6c12s_4q_first_yarn`; `6c12s_4q_second_yarn` is much better there.
+
+**The conditional distribution is the part that matters**, because a tape swap
+replaces the whole 30-day schedule — it either does nothing or changes
+everything:
+
+```
+fires on 12.6% of games (452 of 3,600 paired)
+conditional mean +14,662 (se 853, t=17.2), positive in 365/452 = 81%
+conditional sd 18,145   min -33,940   median +12,618   max +72,456
+```
+
+Confirmed on the distribution that actually matters — replayed against the 80
+real ladder opponents we have faced: **+429, record 62/80 → 66/80**.
+
+Shipped as 55614625. Real-engine gate +858 (se 242) over 630 paired games.
+
+**The remaining four buckets have now been checked properly and the default is
+right for them. Do not re-search this.**
+
+---
+
+## 17. The market layer is exhausted — proven, not assumed (2026-08-19)
+
+Section 14 concluded "the layer is at a local optimum; stop tuning it" from
+three refinements landing in noise at n=24-32. That conclusion was correct for
+*parameters* and wrong for *structural* changes — `IV_STRUCT` was structural and
+worth +670 on the real engine.
+
+With `planner/simulate.py` the parameter question is now settled at ~1,300
+paired games per variant, with common random numbers:
+
+| round | what | verdict |
+|---|---|---|
+| 1-2 | IV_STRUCT / dump / price gate / lead / slot | **+490 shipped**; slot_first -327 (t=-10.8); lead 2 and 4 both worse than 3 |
+| 3 | dump ITEM SET (drop STRAWBERRY, MILK, etc.) | refuted: no_strawberry +496 vs unchanged +495 |
+| 4 | base tape `_PREEMPT_*` constants | **all noise** |
+| 5 | seat-conditional play | refuted, and backwards from the hypothesis |
+| 6 | sell SUPPRESSION (hold stock for price) | **catastrophic**, -7,905 to -14,731 |
+| — | tuned against the 80 real ladder opponents | live config already optimal (best +23) |
+
+Two findings inside those negatives are worth keeping:
+
+- **kawa's own preempt layer is inert under our configuration.**
+  `_PREEMPT_MAX_BATCH` 30→40, `_PREEMPT_FRACTION` 1.0→2.0 and `_PREEMPT_START`
+  120→0 each produce an **exact 0.0** paired delta. Our layer has taken over its
+  role entirely. This retroactively explains section 5's note that PBT "moved
+  backwards" over 10 rounds on these constants — it was optimising dead
+  parameters.
+- **Our high-volume/low-price selling is structural, not a defect.**
+  `planner/analyze_top.py` shows us selling the most units (1,813) at the lowest
+  price ($80.4) against ReCurSiON's 1,404 at $129.6, which looks like an obvious
+  target. It is not: withholding sales at ANY threshold is catastrophic, because
+  the tape's economy depends on continuous liquidation — held stock fills the
+  100-item shed, stalls production and starves downstream purchases.
+
+**Also corrected:** section 0's old "12 vs 14 hand slots, ~22% less labour" gap
+is not real. Measured over 23 replays we run 277 hires / 12 hands / 2,858 useful
+ops — the most ops of anyone on the ladder. Only ReCurSiON runs 14 hands.
+
+---
+
+## 18. The from-scratch planner, 2026-08-19: still far behind
+
+`route/agent.py` under the current best genome is **~-34,000 paired margin vs
+the 9-agent pool at ~0% win rate**. Note the honest baseline: gen116's recorded
+fitness of -8,192 was measured on a much easier matchup mix (kawa + one rotating
+reference + self-play); under the full uniform pool the same genome is -47,787.
+
+Tried and refuted today:
+
+- 10 hand-picked portfolio variants (more GOOSE/EGG, less STRAWBERRY, 8c4s-style
+  mix): **all worse than baseline**, some much worse.
+- `MIN_CREW` floor in `_size_crew` (`planner/route_v2.py`): **-13k to -52k**.
+  The idea was that sizing the crew to *today's* tasks is circular — tasks come
+  from planted tiles, which come from yesterday's crew — so a floor should
+  bootstrap it. Instead it burns fib-priced cash on idle hands, matching section
+  4's finding for the tape. The identity check (MIN_CREW=0 reproduces the
+  unmodified agent at exactly +0) confirms the measurement was sound.
+
+`planner/spec_extract.py` turns the tape into an explicit target list. The gap
+is **scale, not efficiency**: our realised price per unit is BETTER than the
+tape's ($89.7 vs $79.6) and our useful-op rate is higher (44.5% vs 40.1%), but
+we hire 188 to its 277 and land 67 PLANT / 13 PLACE to its 186 / 53. We run a
+farm about two thirds the size, well.
+
+**Do not edit `route/agent.py` while a search runs** — workers re-exec it per
+episode. Copy it (as `planner/route_v2.py`) and edit the copy.
