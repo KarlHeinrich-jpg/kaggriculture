@@ -24,3 +24,6 @@ __pycache__/
 opponents/new2/
 planner/checkpoints/*.jsonl
 deliver/*.py
+
+# BC dataset: 37MB, regenerated in ~8s by `python -m planner.bc_data`
+planner/bc/*.npz
