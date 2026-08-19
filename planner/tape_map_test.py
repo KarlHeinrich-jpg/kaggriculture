@@ -102,10 +102,6 @@ def main():
     variants = [
         ("live_default", dict(LIVE)),
         ("b0_second_yarn", {**LIVE, "TAPE_MAP": P_B0}),
-        ("b0_6c8s", {**LIVE, "TAPE_MAP": ["6c8s_3q"] + DEFAULT_MAP[1:]}),
-        ("b0_8c6s", {**LIVE, "TAPE_MAP": ["8c6s_3q"] + DEFAULT_MAP[1:]}),
-        ("b0_10c4s", {**LIVE, "TAPE_MAP": ["10c4s_3q"] + DEFAULT_MAP[1:]}),
-        ("proposed_all", {**LIVE, "TAPE_MAP": PROPOSED}),
     ]
     paths = {}
     for name, params in variants:
@@ -115,7 +111,7 @@ def main():
 
     import random
     # seed 999 -- disjoint from tape_sweep's 31337 draw, so this is fresh data
-    rng = random.Random(20260819)
+    rng = random.Random(int(os.environ.get("TM_SEED", "20260819")))
     seeds = [rng.randrange(10**6, 2**31 - 1) for _ in range(args.seeds)]
 
     jobs = [(n, paths[n], o, s, seat) for n, _ in variants
@@ -156,6 +152,31 @@ def main():
     rows.sort(key=lambda r: -r[3])
     for name, n, mm, dm, dse, t, bp in rows:
         print(f"{name:<16} {n:>5} {mm:>15,.0f} {dm:>+10,.0f} {dse:>8,.0f} {t:>6.1f} {bp:>8.1%}")
+
+    # A tape swap replaces the whole 30-day schedule, so it either does nothing
+    # (wrong bucket) or changes everything. The unconditional mean hides that.
+    # Report the CONDITIONAL distribution, which is what actually decides whether
+    # this is a real edge or a coin flip with a big stake.
+    for name, _ in variants:
+        if name == "live_default":
+            continue
+        d = per.get(name, {})
+        diffs = [d[k] - base[k] for k in d if k in base]
+        nz = [x for x in diffs if abs(x) > 1]
+        if not nz:
+            continue
+        nz.sort()
+        pos = sum(1 for x in nz if x > 0)
+        cm = statistics.mean(nz)
+        cse = statistics.pstdev(nz) / len(nz) ** 0.5
+        print()
+        print(f"CONDITIONAL on the change actually firing -- {name}")
+        print(f"  fired on {len(nz)}/{len(diffs)} paired games ({100*len(nz)/len(diffs):.1f}%)")
+        print(f"  mean {cm:+,.0f}  (se {cse:,.0f}, t={cm/cse if cse else 0:.1f})")
+        print(f"  better in {pos}/{len(nz)} ({100*pos/len(nz):.0f}%)")
+        print(f"  sd {statistics.pstdev(nz):,.0f}   min {nz[0]:+,.0f}   "
+              f"p25 {nz[len(nz)//4]:+,.0f}   median {nz[len(nz)//2]:+,.0f}   "
+              f"p75 {nz[3*len(nz)//4]:+,.0f}   max {nz[-1]:+,.0f}")
 
     with open(os.path.join(LOG_DIR, "planner_progress.log"), "a") as f:
         f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tape_map_test (fresh seeds) "

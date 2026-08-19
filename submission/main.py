@@ -1012,7 +1012,7 @@ def _kaggle_submission_entrypoint(obs):
     return agent(obs)
 
 
-# struct_d70_mp20: struct forecast + dump .70 + price gate .20
+# b0_second_yarn: struct forecast + dump .70 + price gate .20
 
 # --- runtime constant overrides ---
 _PREEMPT_MAX_BATCH = 30
@@ -1035,6 +1035,39 @@ _IV_MIN_OBS = 3
 # opponent's 1,697, and the game turned in exactly that window.
 # kawa ships the same idea as _PREEMPT_MIN_PRICE_RATIO but leaves it at 0.0.
 _IV_MIN_PRICE = 0.2
+# Seat-conditional overrides. HANDOFF section 5 established that seat is not
+# neutral -- _end_of_day rolls player 0's weeds first and _process_market
+# resolves atomic orders in player order, and two byte-identical agents split
+# 6/40 in seat 0's favour... against it. Our own live ladder record shows the
+# same shape: seat0 34/46 (74%) vs seat1 29/35 (83%).
+# The seat is readable at runtime (obs["player"]), so the layer can simply play
+# differently from the disadvantaged seat. Negative/None means "same as the
+# seat-agnostic value" and the whole thing compiles out.
+# Sell SUPPRESSION. Every layer so far only ADDS sales; this one withholds the
+# tape's own SELL orders while the price is below `base * _IV_HOLD_RATIO`, so
+# stock waits for the town's next consumption tick instead of clearing into a
+# floored book.
+#
+# Legitimacy: this rewrites action["market"] only. HANDOFF section 4 established
+# the TAPE cannot be edited and section 11 that no tile-op substitution survives,
+# but both are about farm actions -- market orders change no tile and are the one
+# channel the tape tolerates (that is why the whole intervention layer exists).
+#
+# Motivation: planner/analyze_top.py over 23 replays puts us at 1,813 units sold
+# at $80.4 each against ReCurSiON's 1,404 at $129.6. We are the highest-volume,
+# lowest-price seller on the ladder. Suppression is the only lever that trades
+# volume for price.
+#
+# Two hard safety valves, both non-negotiable:
+#   - the shed holds 100 items and end-of-day overflow is DISCARDED, so
+#     suppression stops entirely above _IV_HOLD_SHED_MAX;
+#   - money in the shed at the buzzer scores zero, so suppression stops after
+#     _IV_HOLD_STOP_STEP.
+_IV_HOLD_RATIO = 0.0
+_IV_HOLD_SHED_MAX = 70
+_IV_HOLD_STOP_STEP = 600
+_IV_SEAT0_DUMP = None
+_IV_SEAT0_MINPRICE = None
 # Market orders settle in list order, so a slot's position is a price. Our dumps
 # were appended last, behind the tape's own sells, which means our units clear
 # into a book those sells already pushed down. Moving them to the front is safe
@@ -1199,6 +1232,21 @@ def agent(obs):
         orders = [list(x) for x in (action.get("market") or [])]
         already = {x[1] for x in orders if x and x[0] == "SELL" and len(x) >= 2}
 
+        if _IV_HOLD_RATIO > 0 and step < _IV_HOLD_STOP_STEP:
+            shed_used = sum(int(v or 0) for v in shed.values())
+            if shed_used <= _IV_HOLD_SHED_MAX:
+                kept = []
+                prices_now = market.get("prices") or {}
+                for x in orders:
+                    if x and x[0] == "SELL" and len(x) >= 2:
+                        base = _IV_BASE_PRICE.get(x[1], 100)
+                        px = float(prices_now.get(x[1], 0) or 0)
+                        if px < base * _IV_HOLD_RATIO:
+                            continue
+                    kept.append(x)
+                orders = kept
+                already = {x[1] for x in orders if x and x[0] == "SELL" and len(x) >= 2}
+
         if _IV_MIRROR and step in _IV_MIRROR_STEPS:
             _IV_MIRRORED[0] = _iv_near_mirror(farms, seat)
         gate_ok = (not _IV_MIRROR) or bool(_IV_MIRRORED[0])
@@ -1231,13 +1279,18 @@ def agent(obs):
                     nxt = sn
             if nxt is None or not (step < nxt <= step + _IV_LEAD):
                 continue
-            if _IV_MIN_PRICE > 0:
+            _mp = _IV_MIN_PRICE
+            if seat == 0 and _IV_SEAT0_MINPRICE is not None:
+                _mp = _IV_SEAT0_MINPRICE
+            if _mp > 0:
                 px = float((market.get("prices") or {}).get(item, 0) or 0)
                 base = _IV_BASE_PRICE.get(item, 100)
-                if px < base * _IV_MIN_PRICE:
+                if px < base * _mp:
                     continue
             have = int(shed.get(item, 0) or 0)
             frac = _IV_DUMP_FRAC
+            if seat == 0 and _IV_SEAT0_DUMP is not None:
+                frac = _IV_SEAT0_DUMP
             if _IV_STAGED:
                 # two tranches: a smaller lead-in avoids driving the price off a
                 # cliff with one block, so the later units clear higher
@@ -1271,6 +1324,28 @@ def agent(obs):
     except Exception:
         return action
     return action
+
+
+# ============ searched tape-selection rule (pbt/tapesel.py) ============
+_TS_MAP = ['6c12s_4q_second_yarn', '6c12s_4q_second_yarn', '6c8s_3q', '10c4s_3q', '8c6s_3q']
+_TS_MILK = {"PIZZA_SHOP", "ICE_CREAM_SHOP", "SMOOTHIE_SHOP"}
+
+
+def _kawa_route_label(obs):
+    shops = list(((_get(obs, "town", {}) or {}).get("unlocked_shops", []) or []))
+    if shops[:1] == ["YARN_STORE"]:
+        return _TS_MAP[0]
+    if "YARN_STORE" in shops[:2]:
+        return _TS_MAP[1]
+    if "YARN_STORE" in shops[:3]:
+        return _TS_MAP[2]
+    if _TS_MILK.intersection(shops[:3]):
+        return _TS_MAP[3]
+    return _TS_MAP[4]
+
+
+def _tapesel_entry(obs):
+    return agent(obs)
 
 
 def _submission_entry(obs):

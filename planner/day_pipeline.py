@@ -67,6 +67,11 @@ CANDIDATES = {
     "struct": {**SHIPPED, "IV_STRUCT": 1},
 }
 
+# All nine. The first gate for the bucket-0 tape swap used only six and 30
+# seeds, which left ~28 games where the change actually fires -- far too few for
+# an effect concentrated in ~13% of games with a per-firing sd of 18,145. It
+# returned -18 where the 3,600-paired measurement says +1,841. Same quantity,
+# different sample; the simulator reproduces the -18 exactly on that sample.
 REAL_OPPONENTS = [
     "kaggriculture-multi-route-farming-agent",
     "v111-8c4s-economic-core-premium-lead",
@@ -74,6 +79,9 @@ REAL_OPPONENTS = [
     "kaggriculture-3000-socre",
     "kaggriculture-pure-architecture-2600-elo-v3",
     "strong-barnyard-economist",
+    "kaggriculture-breaking-the-tie-2883-score",
+    "kaggriculture-rank-your-agent",
+    "15-16-strict-future-v25-meta-reset",
 ]
 
 _n = [0]
@@ -150,7 +158,7 @@ def main():
     args = ap.parse_args()
 
     import random
-    rng = random.Random(20260819)
+    rng = random.Random(int(os.environ.get("DP_SEED", "20260819")))
     seeds = [rng.randrange(10**6, 2**31 - 1) for _ in range(args.seeds)]
 
     cand_params = CANDIDATES[args.variant]

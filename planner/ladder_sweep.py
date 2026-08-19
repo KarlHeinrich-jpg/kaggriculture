@@ -53,9 +53,20 @@ def _v(name, **over):
     return (name, p)
 
 
+DEFAULT_MAP = ["6c12s_4q_first_yarn", "6c12s_4q_second_yarn", "6c8s_3q",
+               "10c4s_3q", "8c6s_3q"]
+B0_MAP = ["6c12s_4q_second_yarn"] + DEFAULT_MAP[1:]
+
 VARIANTS = [
     ("v3_old", dict(SHIPPED)),
     ("live_55612771", dict(LIVE)),
+    # The bucket-0 tape swap. Against the 9-agent reference pool it is
+    # +1,841 unconditional / +14,662 conditional (t=17.2, better in 81% of the
+    # 452 games where it fires). But the real-engine gate's 6-opponent sample
+    # put it at -18, so the open question is whether the edge is a property of
+    # the reference pool rather than of the ladder. These 80 opponents are the
+    # ones we actually faced.
+    ("b0_second_yarn", {**LIVE, "TAPE_MAP": B0_MAP}),
     _v("lead2", IV_LEAD=2),
     _v("lead4", IV_LEAD=4),
     _v("lead5", IV_LEAD=5),
