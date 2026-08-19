@@ -49,14 +49,15 @@ def bake(params=None, out=OUT, note=None):
                                 day1_only=params.get("OV_DAY1_ONLY", 0)))
         if params.get("INTERVENE"):
             from pbt.intervene import PREMIUM, PREMIUM_FERT
+            _items = params.get("IV_ITEMS")
             f.write(intervene_src(enabled=1,
                                   dump_frac=params.get("IV_DUMP_FRAC", 0.8),
                                   lead=params.get("IV_LEAD", 1),
                                   squeeze=params.get("IV_SQUEEZE", 0),
                                   repay=params.get("IV_REPAY", 0),
                                   mirror=params.get("IV_MIRROR", 0),
-                                  items=PREMIUM_FERT if params.get("IV_FERT")
-                                  else PREMIUM,
+                                  items=(tuple(_items) if _items else
+                                         (PREMIUM_FERT if params.get("IV_FERT") else PREMIUM)),
                                   struct=params.get("IV_STRUCT", 0),
                                   staged=params.get("IV_STAGED", 0),
                                   min_price=params.get("IV_MIN_PRICE", 0.0),

@@ -18,3 +18,8 @@ logs/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+
+# Pulled reference notebooks and their extracted agents (re-pullable with
+# `kaggle kernels pull`); htdc-v12 is kept as a named opponent instead.
+opponents/new2/
+planner/checkpoints/*.jsonl
