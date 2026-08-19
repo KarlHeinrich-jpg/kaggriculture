@@ -229,10 +229,30 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "PLANT_MISS_TOLERANCE", "WHEAT_SELL_SURPLUS")
 
 
+# Set to raise instead of warn when a sweep passes a key this agent does not
+# have. Three separate measurements were wasted tonight on silently ignored
+# parameters -- TERMINAL_STEP (which lives in route/agent.py and does not exist
+# in the tape build), a mis-signed PLAN_GATE_DAYS guard, and a market sweep
+# whose variants all returned byte-identical numbers. Identical rows across
+# variants is the symptom; this makes the cause loud.
+STRICT_PARAMS = 0
+
+
 def configure(params):
     """Apply a searched genome. Mirrors agent/main.py's interface so the same
     search harness can drive this agent."""
     g = globals()
+    known = set(_GENOME_KEYS) | {"RESERVE_PRICE", "STRICT_PARAMS"}
+    known |= {"TC_" + r for r in ROLE_FILL_ORDER}
+    known |= {"RP_" + r for r in ROLE_FILL_ORDER}
+    known |= {"RES_" + k for k in RESERVE_PRICE}
+    unknown = [k for k in params if k not in known]
+    if unknown:
+        msg = f"configure(): ignoring unknown parameters {sorted(unknown)}"
+        if params.get("STRICT_PARAMS", STRICT_PARAMS):
+            raise ValueError(msg)
+        import sys as _sys
+        print("WARNING " + msg, file=_sys.stderr)
     for key in _GENOME_KEYS:
         if key in params:
             g[key] = params[key]
