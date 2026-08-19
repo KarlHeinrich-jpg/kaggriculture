@@ -63,7 +63,16 @@ def bake(params=None, out=OUT, note=None):
                                   min_price=params.get("IV_MIN_PRICE", 0.0),
                                   slot_first=params.get("IV_SLOT_FIRST", 0),
                                   seat0_dump=params.get("IV_SEAT0_DUMP"),
-                                  seat0_min_price=params.get("IV_SEAT0_MINPRICE")))
+                                  seat0_min_price=params.get("IV_SEAT0_MINPRICE"),
+                                  hold_ratio=params.get("IV_HOLD_RATIO", 0.0),
+                                  hold_shed_max=params.get("IV_HOLD_SHED_MAX", 70),
+                                  hold_stop_step=params.get("IV_HOLD_STOP_STEP", 600),
+                                  stop_day=params.get("IV_STOP_DAY", 0),
+                                  late_dump=params.get("IV_LATE_DUMP", 0.0),
+                                  adapt=params.get("IV_ADAPT", 0),
+                                  marginal_floor=params.get("IV_MARGINAL_FLOOR", 0.25),
+                                  vol_mult=params.get("IV_VOL_MULT", 1.0),
+                                  max_qty=params.get("IV_MAX_QTY", 60)))
         if force:
             # Pin the tape instead of letting the shop draw choose it.
             f.write("\n# --- tape selection override ---\n")

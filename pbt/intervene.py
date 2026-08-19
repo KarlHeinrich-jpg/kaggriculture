@@ -42,6 +42,66 @@ _IV_MIN_PRICE = __MINPRICE__
 # The seat is readable at runtime (obs["player"]), so the layer can simply play
 # differently from the disadvantaged seat. Negative/None means "same as the
 # seat-agnostic value" and the whole thing compiles out.
+# Sell SUPPRESSION. Every layer so far only ADDS sales; this one withholds the
+# tape's own SELL orders while the price is below `base * _IV_HOLD_RATIO`, so
+# stock waits for the town's next consumption tick instead of clearing into a
+# floored book.
+#
+# Legitimacy: this rewrites action["market"] only. HANDOFF section 4 established
+# the TAPE cannot be edited and section 11 that no tile-op substitution survives,
+# but both are about farm actions -- market orders change no tile and are the one
+# channel the tape tolerates (that is why the whole intervention layer exists).
+#
+# Motivation: planner/analyze_top.py over 23 replays puts us at 1,813 units sold
+# at $80.4 each against ReCurSiON's 1,404 at $129.6. We are the highest-volume,
+# lowest-price seller on the ladder. Suppression is the only lever that trades
+# volume for price.
+#
+# Two hard safety valves, both non-negotiable:
+#   - the shed holds 100 items and end-of-day overflow is DISCARDED, so
+#     suppression stops entirely above _IV_HOLD_SHED_MAX;
+#   - money in the shed at the buzzer scores zero, so suppression stops after
+#     _IV_HOLD_STOP_STEP.
+_IV_HOLD_RATIO = __HOLDRATIO__
+_IV_HOLD_SHED_MAX = __HOLDSHEDMAX__
+_IV_HOLD_STOP_STEP = __HOLDSTOP__
+# Day gate. Ladder loss forensics (7 losses vs 7 wins, replay margin traced per
+# day) show our losses are ENDGAME collapses rather than early deficits: in 4 of
+# 7 we led by +6,900 to +9,400 at day 15 and bled it all away by day 29, while
+# every win grew monotonically over the same window. Mean swing d15->d29 is
+# -4,400 in losses against +10,551 in wins.
+#
+# HANDOFF section 14 already recorded the mechanism -- "front-running only pays
+# while there is a price to win; at the floor both players clear at the same few
+# dollars" -- and IV_MIN_PRICE was tested against it, scoring +100 on 12 of 24
+# seeds, i.e. chance. But that was a FIELD MEAN over the whole season. A gate
+# that only matters after ~day 20 is diluted by the twenty days where it does
+# nothing, which is exactly the shape that measurement would miss.
+#
+# 0 disables (unchanged behaviour).
+# Adaptive dump sizing. A fixed fraction is wrong in both directions because
+# market depth differs by two orders of magnitude between products. Selling the
+# 80th unit of a run returns, as a fraction of base price:
+#     MELON .75   FERTILIZER .84   EGG .84   WHEAT .84
+#     WOOL  .01   MILK       .01   STRAWBERRY .01
+# so 70% of a wool stock craters the price we are trying to win, while 70% of a
+# melon stock leaves most of the depth unused. Cumulative revenue makes the same
+# point: 40 wool returns 6,809 and 80 wool returns 7,949 -- the second 40 units
+# are worth $1,140 between them.
+#
+# The right quantity is computable exactly, because the engine's price curve is
+# closed-form and the opponent's sale VOLUME is already inferred (see
+# _iv_observe, which computes `theirs` and then throws the number away).
+# Front-running unit k is worth  p(inv + k) - p(inv + their_volume + k)  --
+# what we get selling ahead of them, minus what the same unit fetches after
+# their block lands. Dump while that difference is positive and the unit still
+# clears above the floor.
+_IV_ADAPT = __ADAPT__
+_IV_MARGINAL_FLOOR = __MARGFLOOR__   # stop once a unit fetches < this x base
+_IV_VOL_MULT = __VOLMULT__           # scale on the inferred opponent volume
+_IV_MAX_QTY = __MAXQTY__
+_IV_STOP_DAY = __STOPDAY__
+_IV_LATE_DUMP = __LATEDUMP__      # dump fraction once past _IV_STOP_DAY, if still on
 _IV_SEAT0_DUMP = __SEAT0DUMP__
 _IV_SEAT0_MINPRICE = __SEAT0MINPRICE__
 # Market orders settle in list order, so a slot's position is a price. Our dumps
@@ -68,7 +128,8 @@ _IV_SHOPS = {
 }
 _IV_ALL = ("WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK",
            "WOOL", "FERTILIZER")
-_IV = {"prev": None, "prev_step": None, "hits": {}, "last": {}, "mine": {}}
+_IV = {"prev": None, "prev_step": None, "hits": {}, "last": {}, "mine": {},
+       "vols": {}}
 _IV_BASE_AGENT = agent
 
 
@@ -95,6 +156,12 @@ def _iv_observe(inv, step, shops):
                 h.append(step)
                 if len(h) > 12:
                     del h[0]
+                # The inferred VOLUME was previously discarded. It is the input
+                # the adaptive sizer needs: how big a block are we racing?
+                v = _IV["vols"].setdefault(item, [])
+                v.append(int(theirs))
+                if len(v) > 12:
+                    del v[0]
                 _IV["last"][item] = step
     _IV["prev"] = dict(inv)
     _IV["prev_step"] = step
@@ -171,6 +238,78 @@ def _iv_struct_next(item, farms, seat, step):
     return None if best is None else best * 24
 
 
+_IV_MP = {
+    "WHEAT":      (25, 400, "sqrt", 0.80, "log", 0.20),
+    "CARROT":     (35, 450, "hinge", 1.00, "sqrt", 0.70),
+    "TOMATO":     (60, 200, "hinge", 0.40, "sqrt", 0.60),
+    "STRAWBERRY": (120, 100, "sqrt", 0.70, "linear", 1.60),
+    "MELON":      (250, 300, "log", 0.20, "sq", 3.60),
+    "EGG":        (50, 332, "hinge", 0.40, "log", 0.20),
+    "MILK":       (160, 122, "sqrt", 0.60, "linear", 1.60),
+    "WOOL":       (200, 105, "log", 0.20, "sq", 3.20),
+    "FERTILIZER": (100, 200, "linear", 0.40, "linear", 0.40),
+}
+
+
+def _iv_shape(f, x, T):
+    import math
+    x = max(0.0, x)
+    if f == "linear": return x
+    if f == "sq":     return x * x
+    if f == "sqrt":   return math.sqrt(x)
+    if f == "log":    return math.log(1.0 + x)
+    if f == "hinge":
+        if not T or T <= 0: return x
+        u = x / T
+        return u + 8.0 * max(0.0, u - 1.0) ** 2
+    return x
+
+
+def _iv_price(item, inv):
+    """The engine's own price function, inlined (kaggriculture.market_price)."""
+    p = _IV_MP.get(item)
+    if not p:
+        return 0
+    base, T, bf, bt, af, at = p
+    if inv < 10000:
+        amp = bt * base / _iv_shape(bf, T, T)
+        v = base + amp * _iv_shape(bf, 10000 - inv, T)
+    else:
+        amp = at * base / _iv_shape(af, T, T)
+        v = base - amp * _iv_shape(af, inv - 10000, T)
+    return max(1, int(round(v)))
+
+
+def _iv_optimal_qty(item, inv, have, opp_vol):
+    """How many units to push ahead of an opponent block of `opp_vol`.
+
+    Unit k is worth p(inv+k) now against p(inv+opp_vol+k) after their block
+    lands, so the gain from front-running it is the difference. Take units while
+    that gain is positive and the unit still clears the floor guard.
+    """
+    base = _IV_MP.get(item, (100,))[0]
+    floor = base * _IV_MARGINAL_FLOOR
+    vol = int(max(0, opp_vol) * _IV_VOL_MULT)
+    n = 0
+    while n < have and n < _IV_MAX_QTY:
+        now = _iv_price(item, inv + n)
+        if now < floor:
+            break
+        later = _iv_price(item, inv + vol + n)
+        if now - later <= 0 and n > 0:
+            break
+        n += 1
+    return n
+
+
+def _iv_volume(item):
+    v = _IV["vols"].get(item) or []
+    if not v:
+        return 0
+    sv = sorted(v[-6:])
+    return sv[len(sv) // 2]
+
+
 def _iv_predict(item, step):
     h = _IV["hits"].get(item) or []
     if len(h) < _IV_MIN_OBS:
@@ -195,7 +334,8 @@ def agent(obs):
         if not step:
             step = int(o.get("day", 0) or 0) * 24 + int(o.get("hour", 0) or 0)
         if step == 0:
-            _IV.update({"prev": None, "prev_step": None, "hits": {}, "last": {}, "mine": {}})
+            _IV.update({"prev": None, "prev_step": None, "hits": {}, "last": {},
+                        "mine": {}, "vols": {}})
             _IV_DEBT.clear(); _IV_MIRRORED[0] = None
         seat = int(o.get("player", 0) or 0)
         farms = o.get("farms") or []
@@ -207,6 +347,21 @@ def agent(obs):
         shed = ((o.get("private") or {}).get("shed") or {})
         orders = [list(x) for x in (action.get("market") or [])]
         already = {x[1] for x in orders if x and x[0] == "SELL" and len(x) >= 2}
+
+        if _IV_HOLD_RATIO > 0 and step < _IV_HOLD_STOP_STEP:
+            shed_used = sum(int(v or 0) for v in shed.values())
+            if shed_used <= _IV_HOLD_SHED_MAX:
+                kept = []
+                prices_now = market.get("prices") or {}
+                for x in orders:
+                    if x and x[0] == "SELL" and len(x) >= 2:
+                        base = _IV_BASE_PRICE.get(x[1], 100)
+                        px = float(prices_now.get(x[1], 0) or 0)
+                        if px < base * _IV_HOLD_RATIO:
+                            continue
+                    kept.append(x)
+                orders = kept
+                already = {x[1] for x in orders if x and x[0] == "SELL" and len(x) >= 2}
 
         if _IV_MIRROR and step in _IV_MIRROR_STEPS:
             _IV_MIRRORED[0] = _iv_near_mirror(farms, seat)
@@ -227,6 +382,10 @@ def agent(obs):
                 newo.append(x)
             orders = newo
             already = {x[1] for x in orders if x and x[0] == "SELL" and len(x) >= 2}
+
+        day_now = step // 24
+        if _IV_STOP_DAY and day_now >= _IV_STOP_DAY and _IV_LATE_DUMP <= 0:
+            gate_ok = False
 
         # dump ahead of their predicted sale
         for item in (_IV_PREMIUM if gate_ok else ()):
@@ -250,13 +409,19 @@ def agent(obs):
                     continue
             have = int(shed.get(item, 0) or 0)
             frac = _IV_DUMP_FRAC
+            if _IV_STOP_DAY and day_now >= _IV_STOP_DAY and _IV_LATE_DUMP > 0:
+                frac = _IV_LATE_DUMP
             if seat == 0 and _IV_SEAT0_DUMP is not None:
                 frac = _IV_SEAT0_DUMP
             if _IV_STAGED:
                 # two tranches: a smaller lead-in avoids driving the price off a
                 # cliff with one block, so the later units clear higher
                 frac = _IV_DUMP_FRAC * (0.5 if nxt - step > 1 else 1.0)
-            qty = int(have * frac)
+            if _IV_ADAPT:
+                inv_now = int((market.get("inventory") or {}).get(item, 10000) or 10000)
+                qty = _iv_optimal_qty(item, inv_now, have, _iv_volume(item))
+            else:
+                qty = int(have * frac)
             if qty > 0:
                 if _IV_SLOT_FIRST:
                     orders.insert(0, ["SELL", item, qty])
@@ -295,7 +460,9 @@ PREMIUM_FERT = PREMIUM + ("FERTILIZER",)
 def intervene_src(enabled=1, dump_frac=0.8, lead=1, squeeze=0,
                   repay=0, mirror=0, items=PREMIUM, struct=0, staged=0,
                   min_price=0.0, slot_first=0, seat0_dump=None,
-                  seat0_min_price=None):
+                  seat0_min_price=None, hold_ratio=0.0, hold_shed_max=70,
+                  hold_stop_step=600, stop_day=0, late_dump=0.0,
+                  adapt=0, marginal_floor=0.25, vol_mult=1.0, max_qty=60):
     return (_TEMPLATE.replace("__ENABLED__", str(bool(enabled)))
             .replace("__DUMP__", repr(float(dump_frac)))
             .replace("__LEAD__", str(int(lead)))
@@ -307,5 +474,14 @@ def intervene_src(enabled=1, dump_frac=0.8, lead=1, squeeze=0,
             .replace("__STAGED__", str(bool(staged)))
             .replace("__MINPRICE__", repr(float(min_price)))
             .replace("__SLOTFIRST__", str(bool(slot_first)))
+            .replace("__HOLDRATIO__", repr(float(hold_ratio)))
+            .replace("__HOLDSHEDMAX__", str(int(hold_shed_max)))
+            .replace("__HOLDSTOP__", str(int(hold_stop_step)))
             .replace("__SEAT0DUMP__", repr(None if seat0_dump is None else float(seat0_dump)))
-            .replace("__SEAT0MINPRICE__", repr(None if seat0_min_price is None else float(seat0_min_price))))
+            .replace("__SEAT0MINPRICE__", repr(None if seat0_min_price is None else float(seat0_min_price)))
+            .replace("__STOPDAY__", str(int(stop_day)))
+            .replace("__LATEDUMP__", repr(float(late_dump)))
+            .replace("__ADAPT__", str(bool(adapt)))
+            .replace("__MARGFLOOR__", repr(float(marginal_floor)))
+            .replace("__VOLMULT__", repr(float(vol_mult)))
+            .replace("__MAXQTY__", str(int(max_qty))))
