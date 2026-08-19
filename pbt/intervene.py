@@ -34,6 +34,16 @@ _IV_MIN_OBS = 3
 # opponent's 1,697, and the game turned in exactly that window.
 # kawa ships the same idea as _PREEMPT_MIN_PRICE_RATIO but leaves it at 0.0.
 _IV_MIN_PRICE = __MINPRICE__
+# Seat-conditional overrides. HANDOFF section 5 established that seat is not
+# neutral -- _end_of_day rolls player 0's weeds first and _process_market
+# resolves atomic orders in player order, and two byte-identical agents split
+# 6/40 in seat 0's favour... against it. Our own live ladder record shows the
+# same shape: seat0 34/46 (74%) vs seat1 29/35 (83%).
+# The seat is readable at runtime (obs["player"]), so the layer can simply play
+# differently from the disadvantaged seat. Negative/None means "same as the
+# seat-agnostic value" and the whole thing compiles out.
+_IV_SEAT0_DUMP = __SEAT0DUMP__
+_IV_SEAT0_MINPRICE = __SEAT0MINPRICE__
 # Market orders settle in list order, so a slot's position is a price. Our dumps
 # were appended last, behind the tape's own sells, which means our units clear
 # into a book those sells already pushed down. Moving them to the front is safe
@@ -230,13 +240,18 @@ def agent(obs):
                     nxt = sn
             if nxt is None or not (step < nxt <= step + _IV_LEAD):
                 continue
-            if _IV_MIN_PRICE > 0:
+            _mp = _IV_MIN_PRICE
+            if seat == 0 and _IV_SEAT0_MINPRICE is not None:
+                _mp = _IV_SEAT0_MINPRICE
+            if _mp > 0:
                 px = float((market.get("prices") or {}).get(item, 0) or 0)
                 base = _IV_BASE_PRICE.get(item, 100)
-                if px < base * _IV_MIN_PRICE:
+                if px < base * _mp:
                     continue
             have = int(shed.get(item, 0) or 0)
             frac = _IV_DUMP_FRAC
+            if seat == 0 and _IV_SEAT0_DUMP is not None:
+                frac = _IV_SEAT0_DUMP
             if _IV_STAGED:
                 # two tranches: a smaller lead-in avoids driving the price off a
                 # cliff with one block, so the later units clear higher
@@ -279,7 +294,8 @@ PREMIUM_FERT = PREMIUM + ("FERTILIZER",)
 
 def intervene_src(enabled=1, dump_frac=0.8, lead=1, squeeze=0,
                   repay=0, mirror=0, items=PREMIUM, struct=0, staged=0,
-                  min_price=0.0, slot_first=0):
+                  min_price=0.0, slot_first=0, seat0_dump=None,
+                  seat0_min_price=None):
     return (_TEMPLATE.replace("__ENABLED__", str(bool(enabled)))
             .replace("__DUMP__", repr(float(dump_frac)))
             .replace("__LEAD__", str(int(lead)))
@@ -290,4 +306,6 @@ def intervene_src(enabled=1, dump_frac=0.8, lead=1, squeeze=0,
             .replace("__STRUCT__", str(bool(struct)))
             .replace("__STAGED__", str(bool(staged)))
             .replace("__MINPRICE__", repr(float(min_price)))
-            .replace("__SLOTFIRST__", str(bool(slot_first))))
+            .replace("__SLOTFIRST__", str(bool(slot_first)))
+            .replace("__SEAT0DUMP__", repr(None if seat0_dump is None else float(seat0_dump)))
+            .replace("__SEAT0MINPRICE__", repr(None if seat0_min_price is None else float(seat0_min_price))))

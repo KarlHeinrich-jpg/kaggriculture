@@ -158,6 +158,33 @@ ROUND4 = [
     _v4("pf_stop700", _PREEMPT_STOP=700),
 ]
 
+# Round 5: SEAT-CONDITIONAL play. Rounds 1-4 tuned parameters that apply
+# identically from both seats. Seat is not neutral -- HANDOFF section 5 measured
+# two byte-identical agents splitting 6/40 against seat 0, and our own live
+# ladder record has the same shape (seat0 34/46 = 74%, seat1 29/35 = 83%).
+# section 14 called this "not fixable from the agent side", but the seat IS
+# readable at runtime from obs["player"], so the layer can simply play
+# differently from the disadvantaged seat. Nothing in HANDOFF tries this.
+def _v5(name, **over):
+    p = dict(SHIPPED)
+    p.update(BEST3)
+    p.update(over)
+    return (name, p)
+
+
+ROUND5 = [
+    ("live_55612771", dict({**SHIPPED, **BEST3})),
+    _v5("s0_dump90", IV_SEAT0_DUMP=0.90),
+    _v5("s0_dump100", IV_SEAT0_DUMP=1.00),
+    _v5("s0_mp05", IV_SEAT0_MINPRICE=0.05),
+    _v5("s0_mp00", IV_SEAT0_MINPRICE=0.0),
+    _v5("s0_dump90_mp05", IV_SEAT0_DUMP=0.90, IV_SEAT0_MINPRICE=0.05),
+    _v5("s0_dump100_mp00", IV_SEAT0_DUMP=1.00, IV_SEAT0_MINPRICE=0.0),
+    _v5("s0_dump50", IV_SEAT0_DUMP=0.50),
+    _v5("s0_mp35", IV_SEAT0_MINPRICE=0.35),
+    _v5("s0_dump50_mp35", IV_SEAT0_DUMP=0.50, IV_SEAT0_MINPRICE=0.35),
+]
+
 OPPONENTS = [
     "kaggriculture-multi-route-farming-agent",       # kawa -- the hardest, and the tape we run
     "v111-8c4s-economic-core-premium-lead",
@@ -216,6 +243,9 @@ def main():
         OPPONENTS = ROUND2_OPPONENTS
     elif args.round == 4:
         VARIANTS = ROUND4
+        OPPONENTS = ROUND2_OPPONENTS
+    elif args.round == 5:
+        VARIANTS = ROUND5
         OPPONENTS = ROUND2_OPPONENTS
 
     import random
