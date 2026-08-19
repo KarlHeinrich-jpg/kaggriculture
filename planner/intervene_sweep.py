@@ -185,6 +185,31 @@ ROUND5 = [
     _v5("s0_dump50_mp35", IV_SEAT0_DUMP=0.50, IV_SEAT0_MINPRICE=0.35),
 ]
 
+# Round 6: SELL SUPPRESSION -- the first lever that trades volume for price.
+# Every layer to date only adds sales. analyze_top.py measured us as the
+# highest-volume lowest-price seller on the ladder (1,813 units @ $80.4 vs
+# ReCurSiON's 1,404 @ $129.6), and rounds 4-5 showed the parameter space of
+# the ADD-side is exhausted, so this is the remaining structural direction.
+def _v6(name, **over):
+    p = dict(SHIPPED)
+    p.update(BEST3)
+    p.update(over)
+    return (name, p)
+
+
+ROUND6 = [
+    ("live_55612771", dict({**SHIPPED, **BEST3})),
+    _v6("hold10", IV_HOLD_RATIO=0.10),
+    _v6("hold20", IV_HOLD_RATIO=0.20),
+    _v6("hold30", IV_HOLD_RATIO=0.30),
+    _v6("hold40", IV_HOLD_RATIO=0.40),
+    _v6("hold20_shed85", IV_HOLD_RATIO=0.20, IV_HOLD_SHED_MAX=85),
+    _v6("hold20_shed55", IV_HOLD_RATIO=0.20, IV_HOLD_SHED_MAX=55),
+    _v6("hold20_stop500", IV_HOLD_RATIO=0.20, IV_HOLD_STOP_STEP=500),
+    _v6("hold20_stop660", IV_HOLD_RATIO=0.20, IV_HOLD_STOP_STEP=660),
+    _v6("hold30_shed85", IV_HOLD_RATIO=0.30, IV_HOLD_SHED_MAX=85),
+]
+
 OPPONENTS = [
     "kaggriculture-multi-route-farming-agent",       # kawa -- the hardest, and the tape we run
     "v111-8c4s-economic-core-premium-lead",
@@ -246,6 +271,9 @@ def main():
         OPPONENTS = ROUND2_OPPONENTS
     elif args.round == 5:
         VARIANTS = ROUND5
+        OPPONENTS = ROUND2_OPPONENTS
+    elif args.round == 6:
+        VARIANTS = ROUND6
         OPPONENTS = ROUND2_OPPONENTS
 
     import random
