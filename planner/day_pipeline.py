@@ -203,6 +203,24 @@ def main():
         log("gates passed but --no-submit set; submission/main.py untouched.")
         return 0
 
+    # ---------------------------------------------------------------------
+    # Uploading is OFF, by the user's instruction of 2026-08-19: local
+    # optimisation only, they will submit by hand. This is a hard stop rather
+    # than a default flag, because a default can be overridden by a stale
+    # command line sitting in a nohup or a cron entry, and an accidental
+    # submission spends a scarce daily slot AND rotates a good submission out
+    # of the active pair (Kaggle keeps only the latest 2).
+    #
+    # To re-enable, the user sets KAGG_ALLOW_SUBMIT=1 in the environment.
+    # Do not add a CLI flag for this and do not set the variable yourself.
+    # ---------------------------------------------------------------------
+    if os.environ.get("KAGG_ALLOW_SUBMIT") != "1":
+        log("UPLOAD DISABLED (user instruction 2026-08-19: local optimisation only).")
+        log(f"  gates all passed; candidate is at {cand_path}")
+        log(f"  to ship by hand:  bake to submission/main.py, then "
+            f"`kaggle competitions submit -c kaggriculture -f submission/main.py -m '...'`")
+        return 0
+
     out = os.path.join(ROOT, "submission", "main.py")
     bake(cand_params, out=out, note=f"{args.variant}: struct forecast + dump .70 + price gate .20")
     size = os.path.getsize(out)
