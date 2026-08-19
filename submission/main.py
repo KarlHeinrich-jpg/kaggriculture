@@ -1011,6 +1011,9 @@ def agent(obs):
 def _kaggle_submission_entrypoint(obs):
     return agent(obs)
 
+
+# struct_d70_mp20: struct forecast + dump .70 + price gate .20
+
 # --- runtime constant overrides ---
 _PREEMPT_MAX_BATCH = 30
 _PREEMPT_MIN_FUTURE_QUANTITY = 0
@@ -1018,7 +1021,7 @@ _PREEMPT_MIN_FUTURE_QUANTITY = 0
 
 # ============ market intervention overlay (pbt/intervene.py) ============
 _IV_ENABLED = True
-_IV_DUMP_FRAC = 0.8
+_IV_DUMP_FRAC = 0.7
 _IV_LEAD = 3
 _IV_SQUEEZE = 0
 _IV_REPAY = False          # conserve total volume: repay pulled-forward units
@@ -1031,7 +1034,7 @@ _IV_MIN_OBS = 3
 # loss: FERTILIZER went 43 -> 26 -> 10 -> 1 while we sold 2,738 units to the
 # opponent's 1,697, and the game turned in exactly that window.
 # kawa ships the same idea as _PREEMPT_MIN_PRICE_RATIO but leaves it at 0.0.
-_IV_MIN_PRICE = 0.0
+_IV_MIN_PRICE = 0.2
 # Market orders settle in list order, so a slot's position is a price. Our dumps
 # were appended last, behind the tape's own sells, which means our units clear
 # into a book those sells already pushed down. Moving them to the front is safe
@@ -1042,7 +1045,7 @@ _IV_SLOT_FIRST = False
 _IV_BASE_PRICE = {"MELON": 250, "MILK": 160, "STRAWBERRY": 120, "WOOL": 200,
                   "FERTILIZER": 100, "WHEAT": 25, "EGG": 50, "CARROT": 35,
                   "TOMATO": 60}
-_IV_STRUCT = False      # predict from the opponent's visible tiles too
+_IV_STRUCT = True      # predict from the opponent's visible tiles too
 _IV_STAGED = False      # split the dump into two tranches instead of one
 _IV_PREMIUM = ('MELON', 'MILK', 'STRAWBERRY', 'WOOL', 'FERTILIZER')
 _IV_DEBT = {}
