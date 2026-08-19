@@ -73,6 +73,18 @@ entirely (the 80 real ladder traces).
 | bucket-0 tape swap | real engine | **+858** |
 | ...the same, across our 80 real ladder games | ladder traces | +429, record 62/80 → 66/80 |
 
+### The two lines, as of 2026-08-20
+
+Both are at local optima and the reason is now measured, not guessed.
+
+- **tape+market (SHIPPED, ladder 2183.9)**: 600 mutants cleared nothing;
+  five market-layer ideas refuted with controls. Section 20.
+- **from-scratch planner (-57,830)**: its economy already MATCHES the tape's
+  (own bank 86,386 vs 86,119). The entire gap is that the opponent banks ~$51k
+  more against us, and the cause is price, not stolen volume -- they sell 1,446
+  units against us and 1,447 against the tape, at $114.2 and $78.7 respectively.
+  Ten levers refuted. Section 19.
+
 ### Corrections to earlier sections of this document
 
 - **Section 0's old "12 vs 14 hand slots" gap is NOT our deficit.** Measured
@@ -708,3 +720,159 @@ farm about two thirds the size, well.
 
 **Do not edit `route/agent.py` while a search runs** — workers re-exec it per
 episode. Copy it (as `planner/route_v2.py`) and edit the copy.
+
+---
+
+## 19. The planner's deficit is PRICE SUPPRESSION, and ten levers were refuted (2026-08-20)
+
+### The measurement that reframes everything
+
+Every diagnostic before tonight measured OUR side -- revenue per work-turn,
+$/unit, work fraction, build count, idle rate -- and all of them showed the
+planner at or above the tape at 50 tiles. That is why nine experiments chased
+the wrong quantity. **`paired margin` is us MINUS them, and the second term was
+never measured on its own.**
+
+Over 4 opponents x 3 seeds x both seats:
+
+| we play | own bank | opponent bank | paired |
+|---|---|---|---|
+| dynamic, 50 tiles | 86,386 | **131,522** | -45,136 |
+| the tape | 86,119 | **80,601** | **+5,518** |
+
+**Our economy is already tape-equivalent -- 0.3% apart.** The whole gap is that
+the opponent banks ~$51k more against us than against the tape.
+
+### It is price, not volume. The opponent sells exactly as much either way.
+
+| we play | opp units | opp $/unit | opp bank | our units | our $/unit |
+|---|---|---|---|---|---|
+| dynamic | **1,446** | **114.2** | 131,522 | 1,110 | 104.6 |
+| tape | **1,447** | **78.7** | 80,601 | 1,603 | 80.5 |
+
+The opponent sells 1,446 units against us and 1,447 against the tape -- the tape
+takes not one unit from them. It wins by selling 1,603 units to our 1,110, which
+drags the shared price level down 31% for everyone. **The tape suffers the low
+prices too ($80.5/unit); it wins because at that price level the larger producer
+comes out ahead.** Our high $/unit is a symptom of being small, not a strength.
+
+So the requirement is precise: **produce profitably above ~50 tiles.**
+
+### Ten levers, all refuted
+
+| lever | result |
+|---|---|
+| proportional portfolio scale-up | -87,245 |
+| crew floor (MIN_CREW) | -52,000 |
+| crew + tiles together (schedule-driven) | -62,285 |
+| cycling-crop portfolios (wheat-heavy) | -150,176 |
+| geese (the uncapped book) | -183,427 |
+| front-loaded purchases | -42,897 |
+| SeasonPlan layout transplant | -86,211 |
+| whole-tile triage scheduler | +/-2,700, i.e. noise |
+| wheat flooding | -95,916, **and it makes the opponent RICHER** |
+| capped-book flooding | -81,980, **opponent's volume does not move at all** |
+
+Two of these are worth keeping as facts rather than scores:
+
+- **Flooding wheat subsidises the opponent.** The engine allows `BUY_PRODUCT`
+  only for WHEAT and FERTILIZER, so wheat is what they buy for feed. Pushing our
+  wheat sales 285 -> 536 raised their bank 106,957 -> 112,248.
+- **There is no headroom to steal.** Across every capped-book variant the
+  opponent sold 753-755 units regardless of whether we sold 540 or 638. Town
+  drain replenishes fast enough that both players sell what they produce. An
+  earlier note in this document reasoned that capped products cannot be denied
+  because both clear at $1; the real reason is simpler -- volume is not
+  contested at all, only price is.
+
+### Why buying to dump cannot work
+
+`_commit_unit` quotes `BUY_PRODUCT` at `market_price(inv - 1)`, i.e. post-buy,
+with the engine's own comment: "so a buy/sell round-trip against an unchanged
+market nets zero". Price suppression has to be PRODUCED, never purchased.
+
+### Status
+
+Mechanism fully characterised, no usable lever found. This is not a parameter
+problem: it needs a day scheduler that stays profitable past 50 tiles, and the
+triage rewrite (`dynamic/router2.py`) did not deliver that. Do not re-run
+portfolio or cash-flow searches -- `planner/role_gradient.py` measured all 24
+single-role perturbations of the 50-tile optimum negative, and a 19-generation
+cash-flow GA peaked at generation 1 (-57,830 from -78,027) and then went 17
+generations without improvement.
+
+---
+
+## 20. The tape+market line is exhausted too (2026-08-20)
+
+`evolution/` ran 600 mutants over 3 rounds -- tape-map recombination, cross-family
+window splices, and jitter on the base tape's constants -- with **zero clearing a
++200 screen**, and stopped on its own plateau rule.
+
+Market-layer ideas tested and refuted tonight, each with controls:
+
+| idea | result |
+|---|---|
+| adaptive dump sizing from the exact price curve | 12 variants, all negative; best -34 |
+| ...against fixed-fraction controls | no adaptive setting beat its fixed control |
+| depth concentration (dump only MELON+FERTILIZER) | 8 variants, all negative, best -127 |
+| day gate on late-game dumping | +22 (pool), +10 (ladder replays) |
+| weighted / most-recent cadence predictor | 5 variants, -126..-181; median stands |
+
+**The front-run audit is the useful artefact.** Over 144 games, tracking every
+firing against the opponent's exactly recovered sales: we clear ahead on
+**94-99%** of firings and same-step collisions are rare (the engine quotes both
+players against the same pre-commit inventory, so a same-step sale is priced
+identically for both -- beating them requires a strictly earlier step). Position
+is not the problem. Realised price sorts by market DEPTH instead:
+
+```
+FERTILIZER  493 units to floor   +1.1 per unit
+MELON       158                 +24.3
+MILK         76                  -2.8
+STRAWBERRY   62                  -2.1
+WOOL         59                  -2.2
+```
+
+On three of five products we sell first and realise LESS: dumping into a shallow
+book walks our own later units down, the town drains, and the opponent sells into
+the recovery above our average. But the A/B refuted acting on it -- concentrating
+on the deep books scored -127 -- so the audit signal is correlational, and does
+not separate our dump's causal effect from the price path it shares with theirs.
+
+---
+
+## 21. Measurement rules added tonight
+
+**Identical rows across variants means a parameter is inert, not that the idea
+is neutral.** This cost three separate measurements:
+
+- `TERMINAL_STEP` belongs to `route/agent.py` and does not exist in the tape
+  build; nine terminal-timing variants returned byte-identical numbers.
+- `PLAN_GATE_DAYS >= 0` is true for 0, so a SeasonPlan "off" control silently ran
+  the tape's 73-tile layout with 50-tile parameters and scored -164,312 against
+  its real -78,101.
+- A sell-policy sweep produced seven identical rows because the reserve was
+  never binding; a follow-up probe then mislabelled the cause as the reserve
+  price when the actual hold is the FEED buffer.
+
+`dynamic/agent2.py::configure()` now reports unknown keys and raises under
+`STRICT_PARAMS`. **Apply the same guard before trusting any sweep.**
+
+**Do not select games by outcome and then read their trajectory.** A per-day
+margin trace of 7 losses against 7 wins appeared to show "endgame collapse" --
+losses led at day 15 and bled out. That is circular: a loss is by definition a
+game whose margin ends negative. Two interventions built on it (day gate,
+adaptive sizing) found nothing, because the pattern was an artefact of the
+selection. Compare at a FIXED point instead: of all games led at day 15, what
+fraction converted?
+
+**Behavioural cloning from a tape cannot work, and the control proves it.**
+`planner/bc_data.py` + `bc_train.py` reach 92.8% action accuracy (96.2% on
+non-move ops) from 2.7M samples. The resulting agent banks **$288** against the
+tape's $89k. Letting the TAPE drive and merely asking the network what it would
+do gives 92.6% agreement -- so the model is correct and the failure is covariate
+shift. It is unfixable here: DAgger needs the expert to label the states the
+learner reaches, and a fixed 719-step action list cannot be queried off its own
+trajectory. Adding data does not help; more on-distribution samples say nothing
+about off-distribution states.
