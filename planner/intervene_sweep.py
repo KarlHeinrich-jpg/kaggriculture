@@ -123,6 +123,41 @@ ROUND3 = [
     _v3("add_egg_wheat", _ALL5 + ("WHEAT", "EGG")),
 ]
 
+# Round 3 refuted the item-set hypothesis (no_strawberry +496 vs unchanged +495),
+# so the shipped item set stands. BEST3 is what is now live as submission 55612771.
+BEST3 = {**BEST2}
+
+
+def _v4(name, **over):
+    p = dict(SHIPPED)
+    p.update(BEST3)
+    p.update(over)
+    return (name, p)
+
+
+# Round 4: the base TAPE's own preempt constants. HANDOFF searched these via PBT
+# but section 5 records that PBT scored variants on 12 games, "so noise dominated
+# and 10 rounds of optimisation moved backwards". They have never been measured
+# with common random numbers at this sample size. _PREEMPT_MAX_CLONE_DISTANCE is
+# the interesting one: section 6 found kawa's preemption is fully armed against us
+# because our clone distance is 0, and raising OUR gate changes when we fire.
+ROUND4 = [
+    ("live_55612771", dict({**SHIPPED, **BEST3})),
+    _v4("mp15", IV_MIN_PRICE=0.15),
+    _v4("mp25", IV_MIN_PRICE=0.25),
+    _v4("mp30", IV_MIN_PRICE=0.30),
+    _v4("d65", IV_DUMP_FRAC=0.65),
+    _v4("d60", IV_DUMP_FRAC=0.60),
+    _v4("staged", IV_STAGED=1),
+    _v4("pf_batch40", _PREEMPT_MAX_BATCH=40),
+    _v4("pf_batch20", _PREEMPT_MAX_BATCH=20),
+    _v4("pf_frac2", _PREEMPT_FRACTION=2.0),
+    _v4("pf_clone40", _PREEMPT_MAX_CLONE_DISTANCE=40),
+    _v4("pf_start0", _PREEMPT_START=0),
+    _v4("pf_ratio10", _PREEMPT_MIN_PRICE_RATIO=0.10),
+    _v4("pf_stop700", _PREEMPT_STOP=700),
+]
+
 OPPONENTS = [
     "kaggriculture-multi-route-farming-agent",       # kawa -- the hardest, and the tape we run
     "v111-8c4s-economic-core-premium-lead",
@@ -179,6 +214,9 @@ def main():
     elif args.round == 3:
         VARIANTS = ROUND3
         OPPONENTS = ROUND2_OPPONENTS
+    elif args.round == 4:
+        VARIANTS = ROUND4
+        OPPONENTS = ROUND2_OPPONENTS
 
     import random
     rng = random.Random(4242)
@@ -227,7 +265,7 @@ def main():
         per_variant_opp.setdefault((variant, opp), []).append(pm)
 
     base_by_key = {k: v for k, v in per_variant.items()}
-    base_mean = statistics.mean(base_by_key.get("shipped", [0.0]))
+    base_mean = statistics.mean(base_by_key.get(VARIANTS[0][0], [0.0]))
 
     # Per-(opponent, seed) paired difference against `shipped`. Every variant
     # plays the identical seed set against the identical opponents, so
@@ -237,7 +275,7 @@ def main():
     # relevant noise is only the variant's own behavioural difference.
     shipped_by_key = {}
     for (variant, opp, seed), ms in paired.items():
-        if variant == "shipped" and len(ms) == 2:
+        if variant == VARIANTS[0][0] and len(ms) == 2:
             shipped_by_key[(opp, seed)] = sum(ms)
 
     ts = time.strftime("%Y%m%d_%H%M%S")
@@ -280,7 +318,7 @@ def main():
     print("per-opponent for the top variants:")
     top = [r[0] for r in rows[:4]]
     print(f"{'variant':<20} " + " ".join(f"{o[:18]:>19}" for o in OPPONENTS))
-    for name in ["shipped"] + [t for t in top if t != "shipped"]:
+    for name in [VARIANTS[0][0]] + [t for t in top if t != VARIANTS[0][0]]:
         cells = []
         for opp in OPPONENTS:
             ms = per_variant_opp.get((name, opp), [])
