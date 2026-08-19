@@ -57,6 +57,9 @@ OPPONENTS = [
     "kaggriculture-3000-socre",
     "kaggriculture-breaking-the-tie-2883-score",
     "kaggriculture-rank-your-agent",
+    "15-16-strict-future-v25-meta-reset",
+    "strong-barnyard-economist",
+    "kaggriculture-pure-architecture-2600-elo-v3",
 ]
 
 _n = [0]
@@ -91,12 +94,18 @@ def main():
     ap.add_argument("--workers", type=int, default=24)
     args = ap.parse_args()
 
+    # Confirmation: b0 alone was +1,889 (t=7.3) on 150 fresh seeds over 6
+    # opponents while b1 (-146) and b2 (-983) were flat-to-harmful, so the full
+    # map's +760 was b0's gain diluted by the other two. Re-tested here on a
+    # THIRD disjoint seed draw across all 9 opponents, plus the other candidate
+    # tapes for b0 so the choice is not merely default-vs-one-alternative.
     variants = [
         ("live_default", dict(LIVE)),
+        ("b0_second_yarn", {**LIVE, "TAPE_MAP": P_B0}),
+        ("b0_6c8s", {**LIVE, "TAPE_MAP": ["6c8s_3q"] + DEFAULT_MAP[1:]}),
+        ("b0_8c6s", {**LIVE, "TAPE_MAP": ["8c6s_3q"] + DEFAULT_MAP[1:]}),
+        ("b0_10c4s", {**LIVE, "TAPE_MAP": ["10c4s_3q"] + DEFAULT_MAP[1:]}),
         ("proposed_all", {**LIVE, "TAPE_MAP": PROPOSED}),
-        ("proposed_b0", {**LIVE, "TAPE_MAP": P_B0}),
-        ("proposed_b1", {**LIVE, "TAPE_MAP": P_B1}),
-        ("proposed_b2", {**LIVE, "TAPE_MAP": P_B2}),
     ]
     paths = {}
     for name, params in variants:
@@ -106,7 +115,7 @@ def main():
 
     import random
     # seed 999 -- disjoint from tape_sweep's 31337 draw, so this is fresh data
-    rng = random.Random(999)
+    rng = random.Random(20260819)
     seeds = [rng.randrange(10**6, 2**31 - 1) for _ in range(args.seeds)]
 
     jobs = [(n, paths[n], o, s, seat) for n, _ in variants

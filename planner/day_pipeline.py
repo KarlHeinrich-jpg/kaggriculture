@@ -47,8 +47,22 @@ os.makedirs(LOG_DIR, exist_ok=True)
 SHIPPED = {"_PREEMPT_MIN_FUTURE_QUANTITY": 0, "_PREEMPT_MAX_BATCH": 30,
            "INTERVENE": 1, "IV_DUMP_FRAC": 0.8, "IV_LEAD": 3, "IV_FERT": 1}
 
+LIVE = {**SHIPPED, "IV_STRUCT": 1, "IV_DUMP_FRAC": 0.7, "IV_MIN_PRICE": 0.20}
+
+# kawa's default tape-selection map, and the bucket-0 change.
+# Bucket 0 fires when YARN_STORE is the FIRST shop unlocked (~14.7% of games).
+# The default sends that case to 6c12s_4q_first_yarn; measurement says
+# 6c12s_4q_second_yarn is far better there, and only there -- the bucket-1 and
+# bucket-2 changes the same analysis proposed are flat to harmful.
+DEFAULT_MAP = ["6c12s_4q_first_yarn", "6c12s_4q_second_yarn", "6c8s_3q",
+               "10c4s_3q", "8c6s_3q"]
+B0_MAP = ["6c12s_4q_second_yarn"] + DEFAULT_MAP[1:]
+
+BASELINE = (dict(LIVE), "live 55612771")
+
 CANDIDATES = {
-    "struct_d70_mp20": {**SHIPPED, "IV_STRUCT": 1, "IV_DUMP_FRAC": 0.7, "IV_MIN_PRICE": 0.20},
+    "struct_d70_mp20": dict(LIVE),
+    "b0_second_yarn": {**LIVE, "TAPE_MAP": B0_MAP},
     "struct_d70": {**SHIPPED, "IV_STRUCT": 1, "IV_DUMP_FRAC": 0.7},
     "struct": {**SHIPPED, "IV_STRUCT": 1},
 }
@@ -143,7 +157,7 @@ def main():
     cand_path = os.path.join(ROOT, "agents", f"cand_{args.variant}.py")
     base_path = os.path.join(ROOT, "agents", "cand_shipped.py")
     bake(cand_params, out=cand_path, note=f"day_pipeline candidate {args.variant}")
-    bake(SHIPPED, out=base_path, note="day_pipeline baseline = live submission 55600561")
+    bake(BASELINE[0], out=base_path, note=f"day_pipeline baseline = {BASELINE[1]}")
     log(f"day_pipeline: candidate={args.variant} baked to {cand_path}")
 
     log("REAL-ENGINE evaluation (this is the gate; simulator already agrees)")
@@ -190,9 +204,8 @@ def main():
         log("ABORT: baked submission failed path validation")
         return 1
 
-    desc = (f"{args.variant}: IV_STRUCT=1 dump .70 min_price .20 | "
-            f"sim +{args.sim_delta:.0f} (t={args.sim_t:.1f}, n=1440 paired) | "
-            f"real-engine +{delta:.0f}")
+    desc = (f"{args.variant} | sim +{args.sim_delta:.0f} (t={args.sim_t:.1f}) | "
+            f"real-engine +{delta:.0f} vs {BASELINE[1]}")
     r = subprocess.run([KAGGLE, "competitions", "submit", "-c", "kaggriculture",
                         "-f", out, "-m", desc[:480]],
                        capture_output=True, text=True, timeout=600)
