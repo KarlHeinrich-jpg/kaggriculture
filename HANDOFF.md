@@ -1628,3 +1628,49 @@ about $112 each at day 20. That is the arithmetic, and it is negative.
 **Conclusion: the $22,900 of idle cash is a correct valuation, not a defect.**
 There is nothing left worth buying with it. Do not re-attempt land expansion
 without first passing `enpv_land`.
+
+### 30.1 The agent's OWN land purchase is ENPV-justified (a valid null)
+
+`LAND_ENPV_VETO` prices the quadrant the agent already buys and declines it if
+the tiles cannot repay the land. It measures **exactly +0 at every
+`LAND_USABLE_FRAC`** — and this is a valid null, not the inert-parameter
+symptom, which was checked rather than assumed:
+
+```
+enpv_land evaluated 708 times, negative 233 times
+  day  quad   $/tile  tiles   ENPV_land
+    0     0    1,274     15     +18,110
+   14     1      594     15      +6,909
+   29     1        0     15      -2,000
+```
+
+It is strongly positive at every moment the agent actually buys (day 0 and
+day 14) and only negative at day 29, when no crop can yield before the buzzer
+and the agent would not buy anyway. So the framework confirms the existing
+behaviour: the first quadrant is worth +$18,110 and the second +$6,909.
+
+That also cross-checks section 30 from the other side — land is worth buying
+EARLY and not late, which is exactly why the zero-drag expansion (buying a third
+quadrant around day 20) measured -18,143.
+
+### 30.2 The GA finds no improvement over the hand-tuned reference
+
+Four generations under the win-rate fitness, every generation's winner
+re-confirmed on disjoint seeds:
+
+| gen | in-generation | confirmed | W-L |
+|---|---|---|---|
+| 0 | +5.6pp | **-5.6pp** | 96-120 |
+| 1 | +9.7pp | **-6.0pp** | 95-121 |
+| 2 | +0.0pp | +0.0pp | 0-0 (the winner WAS the reference) |
+| 3 | +11.1pp | **-11.9pp** | 82-133 |
+
+`best` remains +0.0pp: **nothing has beaten the seeded reference.** Every
+apparent winner is in-generation noise, and the confirmation pass catches each
+one. Generation 2 is the cleanest evidence — the reference itself won its own
+generation.
+
+This is the same conclusion the margin-based run reached, now with a metric that
+is 29-45% more sensitive and a confirmation gate that cannot bank noise. The
+hand-tuned configuration this session produced is at a local optimum that random
+mutation is not escaping.

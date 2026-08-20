@@ -571,6 +571,20 @@ DRAG_LAND_MULT = 1.3     # buy the next quadrant at this multiple of its price
 # every earlier expansion: spending cash the ramp still needs. The claim was
 # "only provably idle cash"; this is what actually enforces it.
 DRAG_START_DAY = 0
+
+# LAND_ENPV_VETO. enpv_land was written in section 7.4 and never wired:
+#
+#     ENPV_land = n_usable * max_c ENPV_crop(c, t) - C_land
+#
+# Section 30 found the zero-drag expansion negative because it bought a
+# $2,000-4,000 quadrant for 25 tiles worth about $112 each at day 20 -- the land
+# cost was never charged. But the agent ALREADY buys a quadrant of its own
+# accord, and that purchase has never been priced either. This does not drive
+# any expansion; it only DECLINES a land purchase the agent was going to make
+# when the tiles it unlocks cannot repay it. Subtractive, which is the shape
+# that has held here.
+LAND_ENPV_VETO = 0
+LAND_USABLE_FRAC = 0.6   # share of a quadrant's 25 tiles we realistically work
 OPP_MODEL = 1
 OPP_SCALE_LO = 0.65
 OPP_SCALE_HI = 1.30
@@ -611,7 +625,8 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "ENPV_ORDER", "MT_TIMING", "MT_HOLD_THRESHOLD", "MT_QUEUE",
                 "OPP_PREDICT", "OPP_DUMP_VETO", "OPP_DUMP_RATIO",
                 "ZERO_DRAG", "DRAG_MIN_IDLE", "DRAG_ADD_PER_DAY",
-                "DRAG_MAX_TILES", "DRAG_LAND_MULT", "DRAG_START_DAY")
+                "DRAG_MAX_TILES", "DRAG_LAND_MULT", "DRAG_START_DAY",
+                "LAND_ENPV_VETO", "LAND_USABLE_FRAC")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -1705,6 +1720,16 @@ def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None,
         if n_extra < len(LAND_PRICES):
             price = LAND_PRICES[n_extra]
             nxt = LAND_ORDER[n_extra]
+            if LAND_ENPV_VETO and S.get("econ") is not None:
+                ctx = S["econ"]
+                _, per_tile = OPP.best(day, lambda c: ctx.unit_price(c),
+                                       ALLOC_LABOR)
+                usable = int(25 * float(LAND_USABLE_FRAC))
+                v, _det = EN.enpv_land(n_extra, day, ctx, c_labor=ALLOC_LABOR,
+                                       best_crop_enpv=per_tile,
+                                       usable_tiles=usable)
+                if v <= 0:
+                    n_extra = len(LAND_PRICES)      # skip the block entirely
             if SCHEDULE_DRIVEN:
                 due = day >= LAND_SCHEDULE[min(n_extra, len(LAND_SCHEDULE) - 1)]
                 if due and money >= price * LAND_BUY_CASH_MULTIPLE:
