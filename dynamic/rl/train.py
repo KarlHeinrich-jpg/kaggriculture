@@ -187,8 +187,28 @@ def _flatten(trajs, reward, gamma=0.999, lam=0.95):
 
 
 def ppo_update(dnet, snet, opt, batches, device, clip=0.2, epochs=3,
-               vf=0.5, ent=0.01, mb=4096):
-    stats = {"d_loss": 0.0, "s_loss": 0.0, "n": 0}
+               vf=0.5, ent=0.001, mb=4096, kl=0.05, ref=None):
+    """PPO, with a KL leash back to the INITIAL policy.
+
+    The policy is initialised to the scheduler identity, which is a tuned
+    strategy, not a blank slate. Two forces were pulling it off that point
+    faster than the reward could justify:
+
+      ENTROPY. At the identity the sell head has 0.052 nats against a uniform
+      1.386, so -ent*H is a large constant gradient pushing p(identity) down,
+      and one paired reward spread over 749 decisions cannot oppose it.
+      Measured: win rate fell 32.3% -> 19.8% -> 12.5% over three iterations,
+      about 4 sigma, monotone. Coefficient cut 0.01 -> 0.001.
+
+      VALUE LOSS. The value head shares the trunk and starts at zero against
+      returns near -0.5, so early value gradients reshape the very features the
+      policy needs. vf 0.5 -> 0.25.
+
+    The KL term makes the prior explicit rather than implicit: deviate from the
+    scheduler only where the advantage pays for it. `ref` is a frozen copy of
+    the initial nets.
+    """
+    stats = {"d_loss": 0.0, "s_loss": 0.0, "n": 0, "p_identity": 0.0, "n_id": 0}
     for key, net in (("daily", dnet), ("sell", snet)):
         data = batches[key]
         if not data:
@@ -221,12 +241,33 @@ def ppo_update(dnet, snet, opt, batches, device, clip=0.2, epochs=3,
                     ls = F.log_softmax(logits, dim=-1)
                     lp = ls.gather(2, acts[idx].unsqueeze(-1)).squeeze(-1).sum(-1)
                     entropy = -(ls.exp() * ls).sum(-1).mean()
+                    # How much probability still sits on "do what the scheduler
+                    # would have done"? This is the number that showed the
+                    # policy being pulled off its initialisation.
+                    stats["p_identity"] += float(
+                        ls[..., PA.SELL_LEVELS.index(1.0)].exp().mean())
+                    stats["n_id"] += 1
+                kl_pen = 0.0
+                if ref is not None and kl > 0.0:
+                    with torch.no_grad():
+                        rlog, _ = (ref[0] if key == "daily" else ref[1])(obs[idx])
+                    if key == "daily":
+                        for k in PA.DAILY_HEADS:
+                            q = F.log_softmax(rlog[k], dim=-1)
+                            kl_pen = kl_pen + F.kl_div(
+                                F.log_softmax(logits[k], dim=-1), q,
+                                log_target=True, reduction="batchmean")
+                    else:
+                        q = F.log_softmax(rlog, dim=-1)
+                        kl_pen = kl_pen + F.kl_div(
+                            F.log_softmax(logits, dim=-1), q,
+                            log_target=True, reduction="batchmean")
                 ratio = (lp - oldlp[idx]).exp()
                 a = adv[idx]
                 pl = -torch.min(ratio * a,
                                 ratio.clamp(1 - clip, 1 + clip) * a).mean()
                 vl = F.mse_loss(v, ret[idx])
-                loss = pl + vf * vl - ent * entropy
+                loss = pl + vf * vl - ent * entropy + kl * kl_pen
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(net.parameters(), 0.5)
@@ -245,6 +286,10 @@ def main():
     ap.add_argument("--workers", type=int, default=26)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--hours", type=float, default=48.0)
+    ap.add_argument("--ent", type=float, default=0.001)
+    ap.add_argument("--vf", type=float, default=0.25)
+    ap.add_argument("--kl", type=float, default=0.05,
+                    help="KL leash back to the scheduler-identity init")
     ap.add_argument("--self_play", type=float, default=0.6,
                     help="fraction of episodes played against a frozen self")
     ap.add_argument("--snapshot_every", type=int, default=10)
@@ -265,6 +310,11 @@ def main():
     log = open(os.path.join(CKPT_DIR, "train.log"), "a")
     best = -9e9
     snapshots = []
+    # Frozen copy of the identity init: the prior the KL term pulls back to.
+    import copy as _copy
+    dref, sref = _copy.deepcopy(dnet).eval(), _copy.deepcopy(snet).eval()
+    for _pp in list(dref.parameters()) + list(sref.parameters()):
+        _pp.requires_grad_(False)
     for it in range(args.iters):
         if time.time() - t0 > args.hours * 3600:
             print("time budget reached", flush=True)
@@ -298,11 +348,14 @@ def main():
             batches["sell"] += b["sell"]
             rewards.append(r)
             paireds.append(paired)
-        stats = ppo_update(dnet, snet, opt, batches, device)
+        stats = ppo_update(dnet, snet, opt, batches, device,
+                           vf=args.vf, ent=args.ent, kl=args.kl,
+                           ref=(dref, sref))
         wins = sum(1 for p in paireds if p > 0)
         wr = 100.0 * wins / len(paireds)
         line = (f"iter {it:>5} winrate {wr:>5.1f}%  paired {statistics.mean(paireds):>+9,.0f}  "
                 f"reward {statistics.mean(rewards):>+5.2f}  "
+                f"p_id {stats['p_identity'] / max(1, stats['n_id']):.3f}  "
                 f"samples d{len(batches['daily']):,}/s{len(batches['sell']):,}  "
                 f"{len(errs)} err  {time.time()-t0:.0f}s")
         print(line, flush=True)
