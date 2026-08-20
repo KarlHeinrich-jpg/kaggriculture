@@ -1035,3 +1035,77 @@ were shown so by measurement rather than argument. The binding constraint is
 unchanged from section 19 and is now quantified from a second direction:
 **produce more units profitably.** Until that moves, this line stays at -90,650
 paired against the 9-agent pool while the shipped tape+market build is +9,016.
+
+### 22a. One thing that did work: refill dead tiles with wheat
+
+`_last_plant_day` is 19 for STRAWBERRY and 17 for MELON, but **25 for WHEAT**.
+After day 17 any tile that dies is dead for the season, because its own role can
+no longer return anything before the buzzer -- and our board loses 10 tiles over
+the last third (49 -> 39) where the tape holds ~70 flat. Replanting those with
+wheat costs $10 and displaces nothing.
+
+`NURSE_LATE=1, NURSE_CROP="WHEAT"`, paired margin against the 6-agent pool:
+
+| seed set | n paired | vs base | se | t | paired wins |
+|---|---|---|---|---|---|
+| 90210 | 144 | **+1,768** | 373 | 4.7 | 96/144 (67%) |
+| 4242 | 240 | **+1,893** | 286 | 6.6 | 166/240 (69%) |
+| 777001 | 360 | **+2,049** | 221 | 9.3 | 259/360 (72%) |
+
+Controls: `NURSE_LATE` with no `NURSE_CROP` is exactly +0, and
+`NURSE_CROP="MELON"` is exactly +0 -- melon can never be the refill because its
+own last plant day is 17. `SEED_BATCH_PER_TURN=16` on top adds ~+600 but its own
+control is only +822 (t=1.6), so it is not established on its own.
+
+**Mechanism confirmed, not assumed.** The two agents are byte-identical through
+day 19 and then diverge exactly as predicted:
+
+    day          15    17    19    21    23    25    27
+    baseline     47    48    47    43    43    42    37
+    late wheat   47    48    47    47    46    46    42     wheat 245 -> 282
+
+Now on by default in `dynamic/agent2.py`. Note for future sweeps: the baseline
+has moved, so an identity control has to set `NURSE_LATE=0`, not leave it unset.
+
+### The same idea at the other end of the season does NOT work
+
+Deferring expensive seed to follow the tape's cash-flow order is worse, and
+consistently: STRAWBERRY held to day 8 is -10,029, day 11 -14,860, day 14
+-32,276. Strawberry is an ongoing crop with a **4-yield lifetime cap**
+(`production_count > max_yield` stops it, engine line 796), so every day it is
+held back is a yield it never takes. Nursing wheat through the gap recovers
++4,000 to +6,000 of that but never the whole cost.
+
+Also refuted with controls tonight, all on the opening ramp:
+
+| lever | result |
+|---|---|
+| `BUY_ANIMALS_FIRST=0` (cheap seed before $400-500 animals) | **-17,719** |
+| ...with batch 16 | -18,558 |
+| `PLANT_MISS_TOLERANCE` 16 -> 0 / 2 / 4 | -1,214 / +1,311 / +183, all noise |
+| the 73-tile season plan (85 tiles realised) | -62,148 |
+
+The opening-order hypothesis was wrong in the direction it was proposed: animals
+first is right. They produce fertilizer unconditionally from day 1 and milk/wool
+for twenty-plus days, where a $100 strawberry seed returns nothing until day 12.
+
+### Why the 85-tile plan still fails, measured
+
+Crew capacity is NOT the reason, and the earlier reading of this was wrong on a
+subtlety: `_size_crew` sizes the crew TO the task list, so utilisation is pinned
+by construction at ~32% whatever the portfolio (50 tiles 35%, 85 tiles 32%,
+0 days over 100% in either). It measures the crew-sizing ratio, not slack.
+
+The real breakdown of where unit-turns go, against the tape on the same seed:
+
+    us, 50 tiles   move 43%  enable 33%  idle 13%  produce 5%  build 2%   5,485 turns
+    us, 85 tiles   move 47%  enable 30%  idle 12%  produce 4%  build 3%   5,330 turns
+    the tape       move 52%  enable 28%  idle  8%  produce 6%  build 4%   6,914 turns
+
+**Movement is not our problem -- we are better at it than the tape (43% vs 52%)
+and it still banks twice as much.** It simply does 26% more unit-turns and 2.5x
+more build ops. And under the 85-tile plan our cash sits at $0.3k from day 3 to
+day 15 while the tape is at $10.3k by day 12, so the extra tiles are planted and
+then die unwatered (19 tiles on day 3 down to 9 on day 6). More tiles without
+the cash to crew them is strictly worse, which is the sixth independent
+confirmation of that.

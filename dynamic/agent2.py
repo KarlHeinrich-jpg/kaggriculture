@@ -277,6 +277,57 @@ MV_PANIC_ORDER = 0      # 1 = clear the shed in MV order, only as far as needed
 ECON_VALUE = 0
 ECON_ALPHA = 1.0        # suppression trust inside the task price
 ECON_LAMBDA = 0.0       # dollars charged per step of travel; 0 = router decides
+
+# BUILD ORDER IN TIME, not in priority. Producing tiles by day 3 / 9 / 12, from
+# the same $3,000 opening:
+#
+#     us     8 / 19 / 37       the tape   23 / 44 / 68
+#
+# and the tape is RICHER at day 12 too ($10.3k against our $1.5k), so this is
+# not a cash trade-off we are choosing -- it is a ramp we never start. Two
+# causes, both about WHEN a tile is planted rather than what is on it:
+#
+#  1. We buy STRAWBERRY seed at $100 a tile on day 0. Twenty-one of them is
+#     $2,100 of a $3,000 opening, and none of it yields before day 12. The tape
+#     spends day 0 on 12 melon at $80 and 7 wheat at $10 and defers strawberry
+#     to days 11-12, once cash exists.
+#  2. WHEAT sits at ROLE_PRIORITY 0.014, so its tiles are laid last, into
+#     quadrants we never unlock. Wheat is the early-cash engine: $10 a tile,
+#     first yield on day 2, six units by day 4, which is roughly 18x in four
+#     days. Raising its PRIORITY instead costs -75,378, because that hands it
+#     the near-shed tiles for the whole season; the tape gets 390 units out of
+#     12 tiles by CYCLING them, which is a schedule, not a priority.
+#
+# DEFER_* holds a role off until cash can carry it. NURSE_CROP fills the tile
+# in the meantime with something that pays before the real role is due -- wheat
+# is non-ongoing, so the harvest that empties it deletes the plant and hands the
+# tile back with no cleanup.
+DEFER_STRAWBERRY = 0
+DEFER_MELON = 0
+#
+# The same crop cycles at the OTHER end of the season too, and there the tile is
+# free. `_last_plant_day` is 19 for strawberry and 17 for melon, but 25 for
+# wheat: after day 17 any tile that dies is dead for the rest of the season,
+# because its own role can no longer return anything. Our board loses 10 tiles
+# over the last third (49 -> 39) where the tape holds ~70 flat. Replanting those
+# with wheat costs $10 and displaces nothing, because nothing else can grow
+# there any more.
+# MEASURED, three disjoint seed sets against the 6-agent pool, paired margin:
+#   NURSE_LATE + WHEAT   +1,768 (t=4.7, n=144)   +1,893 (t=6.6, n=240)
+#                        +2,049 (t=9.3, n=360), 72% of paired seeds
+# Controls: NURSE_LATE with no NURSE_CROP is exactly +0, and NURSE_CROP="MELON"
+# is exactly +0 (melon's last plant day is 17, so it can never be the refill).
+# Mechanism confirmed rather than assumed -- the two agents are identical
+# through day 19 and then diverge, holding 4-5 more producing tiles to the end
+# (day 27: 42 against 37) and lifting wheat output 245 -> 282.
+#
+# DEFER_* is the same idea at the other end and it does NOT work: strawberry is
+# an ongoing crop with a 4-yield lifetime cap, so every day it is held back is a
+# yield it never takes. -10,029 at day 8, -14,860 at day 11, -32,276 at day 14.
+# Nursing recovers +4,000 to +6,000 of that but never the whole cost.
+NURSE_CROP = "WHEAT"    # "" = leave a deferred tile empty; "WHEAT" = cycle it
+NURSE_UNTIL_DAY = 0
+NURSE_LATE = 1          # 1 = refill tiles whose own role is past its last day
 OPP_MODEL = 1
 OPP_SCALE_LO = 0.65
 OPP_SCALE_HI = 1.30
@@ -309,7 +360,9 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "PLANT_MISS_TOLERANCE", "WHEAT_SELL_SURPLUS",
                 "MV_MARKET", "MV_ALPHA", "MV_OPP_GAIN", "MV_SELF_GAIN",
                 "MV_POSTURE", "MV_METER_MULT", "MV_PANIC_ORDER",
-                "ECON_VALUE", "ECON_ALPHA", "ECON_LAMBDA")
+                "ECON_VALUE", "ECON_ALPHA", "ECON_LAMBDA",
+                "DEFER_STRAWBERRY", "DEFER_MELON", "NURSE_CROP", "NURSE_UNTIL_DAY",
+                "NURSE_LATE")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -548,7 +601,13 @@ def _build_tasks(farm, private, day, board_size):
                 tasks.append(_mk(pos, [["DIG"]], tile=tile, day=day))
             continue
 
-        # crop role
+        # crop role. On an EMPTY tile the role in force is the one whose day
+        # has come -- possibly the nurse crop, possibly nothing yet.
+        if tile is None:
+            eff = _effective_role(role, day)
+            if eff is None:
+                continue
+            role = eff
         cd = CROPS.get(role)
         if cd is None:
             continue
@@ -759,6 +818,10 @@ def _live_ops(role, tile, day, seeds, may_plant=True):
             return [["DIG"]]
         return []
 
+    if tile is None:
+        role = _effective_role(role, day)
+        if role is None:
+            return []
     cd = CROPS.get(role)
     if cd is None:
         return []
@@ -892,6 +955,33 @@ def _ramp(day):
     return max(0.0, 1.0 - (day - RAMP_START_DAY) / span)
 
 
+def _effective_role(role, day):
+    """The role this EMPTY tile should be planted with today.
+
+    None means "not yet" -- the tile is being held for a role whose day has not
+    come, and nothing should be bought or scheduled for it.
+    """
+    if role in ANIMALS:
+        return role
+    start = 0
+    if role == "STRAWBERRY":
+        start = int(DEFER_STRAWBERRY)
+    elif role == "MELON":
+        start = int(DEFER_MELON)
+    if day >= start:
+        if (NURSE_LATE and NURSE_CROP and day > _last_plant_day(role)
+                and day <= _last_plant_day(NURSE_CROP)):
+            return NURSE_CROP
+        return role
+    if NURSE_CROP and day <= int(NURSE_UNTIL_DAY):
+        # Only worth it if the nurse crop finishes before the real role is due;
+        # otherwise the tile is still occupied on the day it is wanted.
+        cd = CROPS.get(NURSE_CROP)
+        if cd and day + cd["max_yield_day"] + 1 <= start:
+            return NURSE_CROP
+    return None
+
+
 def _role_demand(farm, day):
     """Seeds and animals still wanted by the layout, on unlocked land."""
     want = {}
@@ -903,10 +993,13 @@ def _role_demand(farm, day):
         if role in ANIMALS:
             if not (isinstance(tile, dict) and "animal" in tile):
                 want[role] = want.get(role, 0) + 1
-        elif tile is None and day <= _last_plant_day(role):
+        elif tile is None:
+            eff = _effective_role(role, day)
+            if eff is None or day > _last_plant_day(eff):
+                continue
             if pos in (S.get("dropped") or ()):
                 continue
-            want[role] = want.get(role, 0) + 1
+            want[eff] = want.get(eff, 0) + 1
     return want
 
 

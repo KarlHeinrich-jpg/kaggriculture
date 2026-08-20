@@ -78,21 +78,14 @@ def variants(base):
         p = dict(base)
         p.update(kw)
         return p
+    W = dict(NURSE_LATE=1, NURSE_CROP="WHEAT")
     return [
         ("baseline", V()),
-        # WHEAT nets -$9,440 a game: we BUY ~490 units at the scarcity price
-        # (~$40-53, against a $25 base) to feed animals, where the tape grows
-        # 696 and nets +$3,471. RP_WHEAT is 0.014, the lowest of any role, so
-        # wheat tiles are laid last -- into quadrants we never unlock.
-        ("wheat prio .85", V(RP_WHEAT=0.85)),
-        ("wheat prio .85 x12", V(RP_WHEAT=0.85, TC_WHEAT=12)),
-        ("wheat prio .85 x18", V(RP_WHEAT=0.85, TC_WHEAT=18)),
-        ("wheat x12 only", V(TC_WHEAT=12)),
-        # EGG trades at $89 in a scarce book nobody else produces into, and the
-        # log curve means it never crashes.
-        ("goose x6", V(TC_GOOSE=6)),
-        ("goose x6 wheat.85", V(TC_GOOSE=6, RP_WHEAT=0.85, TC_WHEAT=12)),
-        ("feed buffer 2.5", V(WHEAT_FEED_BUFFER_MULT=2.5)),
+        ("late wheat", V(**W)),
+        ("late wheat b12", V(SEED_BATCH_PER_TURN=12, **W)),
+        ("late wheat b16", V(SEED_BATCH_PER_TURN=16, **W)),
+        ("late wheat b24", V(SEED_BATCH_PER_TURN=24, **W)),
+        ("b16 only (control)", V(SEED_BATCH_PER_TURN=16)),
     ]
 
 
@@ -135,7 +128,7 @@ def main():
     import random
     base = base_genome()
     V = variants(base)
-    rng = random.Random(90210)
+    rng = random.Random(int(os.environ.get('MVSEED', '90210')))
     seeds = [rng.randrange(10 ** 6, 2 ** 31 - 1) for _ in range(n)]
     jobs = [(l, p, o, s, st) for l, p in V for o in POOL for s in seeds for st in (0, 1)]
     print(f"{len(V)} variants x {len(POOL)} opponents x {n} seeds x 2 seats "
