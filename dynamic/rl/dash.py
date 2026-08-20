@@ -48,7 +48,29 @@ C = {"r": "\033[0m", "b": "\033[1m", "dim": "\033[2m", "g": "\033[32m",
      "y": "\033[33m", "red": "\033[31m", "cy": "\033[36m"}
 
 
-def parse():
+def _latest_run(rows):
+    """Keep only the CURRENT run.
+
+    train.py opens train.log in APPEND mode, so the file accumulates every
+    restart -- and tonight's restarts changed the reward, the policy class and
+    the curriculum. Concatenating them draws one curve through several
+    incompatible configurations: the tell was a rung sparkline that went
+    5-3-1-3-5-8 (non-monotone, so not one run's promotions) and a POOL wr that
+    stepped from a flat floor to 70% at the moment the curriculum was added.
+
+    A restart shows up as the iteration counter going BACKWARDS, so the last
+    non-decreasing suffix is the run in progress.
+    """
+    if not rows:
+        return rows
+    start = 0
+    for i in range(1, len(rows)):
+        if rows[i]["it"] <= rows[i - 1]["it"]:
+            start = i
+    return rows[start:]
+
+
+def parse(all_runs=False):
     rows = []
     src = LOG if os.path.exists(LOG) else LOG2
     if not os.path.exists(src):
@@ -65,7 +87,7 @@ def parse():
                          "self": f(m.group(5)), "pool": f(m.group(6)),
                          "rung": int(m.group(7)) if m.group(7) else 0,
                          "pid": float(m.group(8))})
-    return rows
+    return rows if all_runs else _latest_run(rows)
 
 
 def spark(vals, lo=None, hi=None, width=48):
@@ -210,7 +232,10 @@ def render():
         return "\n".join(out)
 
     last = rows[-1]
-    A(f"  iters    {len(rows)}   latest {last['it']}")
+    n_all = len(parse(all_runs=True))
+    extra = (f"   {C['dim']}({n_all - len(rows)} earlier rows from previous "
+             f"runs hidden){C['r']}" if n_all > len(rows) else "")
+    A(f"  iters    {len(rows)} in this run   latest {last['it']}{extra}")
     A("")
     # 'now' is ONE iteration -- 96 paired episodes, se ~5pp on a win rate. It
     # swung 12% to 100% on consecutive iterations while the 50-iteration mean

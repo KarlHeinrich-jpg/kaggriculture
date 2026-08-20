@@ -148,6 +148,20 @@ LADDER = ([os.path.join("rungs", f[:-3]) for f in
           if os.path.isdir(_RUNGDIR) else [])
 
 
+def _rung_name(i):
+    """Name the rung, or say GRADUATED.
+
+    rung == len(LADDER) means the graded ladder is cleared and the opponent is
+    drawn from FINAL_TIER instead, so there is no LADDER entry to name.
+    Indexing it crashed the run at exactly the moment it succeeded -- iter 69,
+    rung 6, self-play 57.1% and pool 78.7% -- and the supervisor then restarted
+    from the checkpoint with the curriculum reset to the bottom.
+    """
+    if i < len(LADDER):
+        return os.path.basename(LADDER[i])
+    return f"GRADUATED -> FINAL TIER, {len(FINAL_TIER)} full-strength builds"
+
+
 def _worker_init(weights, snapshot, kind="mlp"):
     # Workers run the NUMPY forward, not torch: measured 1,917 us against 25 us
     # for a SellNet call, because torch pays a Python dispatch and a kernel
@@ -438,8 +452,12 @@ def main():
         if "opt" in _ck:
             opt.load_state_dict(_ck["opt"])
         best = float(_ck.get("best", -9e9))
-        print("resumed from iter %d (best %.1f%%)" % (_ck.get("iter", 0), best),
-              flush=True)
+        # The curriculum position must survive a restart too, or the
+        # supervisor keeps the weights and throws away the rung, re-climbing a
+        # ladder the agent has already cleared.
+        rung[0] = int(_ck.get("rung", 0))
+        print("resumed from iter %d (best %.1f%%, rung %d)"
+              % (_ck.get("iter", 0), best, rung[0]), flush=True)
     for it in range(args.iters):
         if time.time() - t0 > args.hours * 3600:
             print("time budget reached", flush=True)
@@ -538,7 +556,7 @@ def main():
                 rung[0] += 1
                 pool_hist.clear()
                 print(f"  -> promoted to rung {rung[0]} "
-                      f"({os.path.basename(LADDER[rung[0]])})", flush=True)
+                      f"({_rung_name(rung[0])})", flush=True)
             elif m < 10.0 and rung[0] > 0:
                 rung[0] -= 1
                 pool_hist.clear()
@@ -550,7 +568,7 @@ def main():
         def _save(tag):
             torch.save({"daily": dnet.state_dict(), "sell": snet.state_dict(),
                         "opt": opt.state_dict(), "iter": it, "winrate": wr,
-                        "smooth": smooth, "best": best},
+                        "smooth": smooth, "best": best, "rung": rung[0]},
                        os.path.join(CKPT_DIR, tag + ".pt"))
             export_numpy(dnet.cpu(), snet.cpu(),
                          os.path.join(CKPT_DIR, tag + ".npz"))
