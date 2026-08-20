@@ -49,6 +49,13 @@ random numbers over the full 9-agent pool, both seats.
 import argparse, importlib.util, json, multiprocessing, os, random, statistics, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+# Running this as a script puts dynamic/ on sys.path[0], where dynamic/search.py
+# shadows the top-level `search` package that route.evaluate imports -- which
+# surfaces as a circular-import error inside route.search. Strip it. This must
+# run at module scope so forkserver workers, which re-import this module, get it
+# too.
+sys.path[:] = [q for q in sys.path if os.path.abspath(q or ".") != _HERE]
 sys.path.insert(0, ROOT)
 from planner.simulate import Simulator  # noqa: E402
 from route.search import to_params  # noqa: E402

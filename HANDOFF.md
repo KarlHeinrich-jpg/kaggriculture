@@ -1392,3 +1392,104 @@ new labour prices and the two new switches in the genome, and keeps the fitness
 unchanged (paired margin, common random numbers, both seats, ladder-range
 seeds). `ALLOC_MODE=2` and `ENPV_BUY` are deliberately NOT in the search space —
 both are measured strongly negative.
+
+---
+
+## 27. Three modules built alongside the GA (2026-08-20, search running)
+
+`dynamic/search2.py` is running, so `dynamic/agent2.py` and everything in its
+import graph are FROZEN — workers re-exec it per evaluation. All wiring went
+into `dynamic/agent3.py`, a copy with the new switches defaulted off, so
+agent3 with no parameters is agent2 exactly.
+
+### 27.1 Fitted opponent supply — the strongest result of the three
+
+`dynamic/opp_predict.py`. Ridge least squares on eight public features
+(structural forecast, tracked holdings, exact harvest rate, exact sales rate,
+days left, their tiles of this item, their herd size). Held out **by GAME**, not
+by row — rows from one game share its board, shop draw and opponent, so a row
+split would report a fit that does not exist.
+
+| item | model bias / \|err\| / corr | structural bias / \|err\| / corr |
+|---|---|---|
+| STRAWBERRY | −0.9 / 11.3 / **0.99** | −136.4 / 136.4 / 0.54 |
+| MELON | −0.9 / 9.0 / **0.96** | −24.3 / 24.3 / 0.75 |
+| MILK | 1.3 / 11.6 / **0.97** | −75.7 / 75.7 / 0.65 |
+| WOOL | 0.5 / 12.5 / **0.92** | −47.7 / 48.0 / 0.80 |
+| WHEAT | 16.1 / 75.1 / **0.75** | −308.1 / 308.1 / **−0.48** |
+| FERTILIZER | 3.7 / 7.8 / **0.99** | 26.0 / 50.2 / 0.67 |
+
+The 2.5x bias is gone and correlation goes 0.54–0.80 → 0.92–0.99. Caveat: the
+held-out games share the same 6-opponent pool, so this is not evidence of
+transfer to an unseen opponent. Degrades gracefully — no theta means the
+structural forecast, i.e. agent2's behaviour.
+
+### 27.2 Market timing — one derived correction to a hardcoded list
+
+`dynamic/market_timing.py`. `_process_market` runs before `_town_consume` in
+the same step, so holding a sale across a town tick is quoted after the drain
+rather than before it, worth exactly
+
+$$\text{gain per unit} = |P'(q)| \cdot d_{\text{tick}}(i)$$
+
+| item | \|P'\| | tick drain | $/unit held | in `FRONT_RUN_ITEMS`? |
+|---|---|---|---|---|
+| MILK | 2.098 | 3 | 6.30 | yes |
+| WOOL | 2.322 | 2 | 4.64 | yes |
+| STRAWBERRY | 0.343 | 4 | 1.37 | yes |
+| **MELON** | 1.200 | **0** | **0.00** | **yes — and worth nothing** |
+
+**No shop sells MELON**, so its tick drain is zero and holding it gains $0 while
+donating a step to the opponent. Note this ranks the books the OPPOSITE way from
+suppression: suppression wants the books the town cannot refill, timing wants
+the ones it refills hardest.
+
+### 27.3 The spatial/VRP model — built, and it refutes its own premise
+
+`dynamic/spatial.py` implements the graph model, Manhattan `D(u,v)`,
+`TravelTime` over the solved tour, and the hard constraint
+$\sum L_{req} + \text{TravelTime} \le L_{max}$, using the real `partition` and
+`build_tour` rather than a formula.
+
+**At the crew the agent actually runs, nothing is dropped:**
+
+```
+73 tiles with 12 workers:  served 73, dropped 0
+50 tiles with 12 workers:  served 50, dropped 0
+```
+
+| workers | crop tiles servable | animal tiles servable |
+|---|---|---|
+| 8 | 65 | 37 |
+| 12 | 80 | 52 |
+| 16 | 100 | 67 |
+
+So the 73-tile collapse is **not** a routing failure and the hard constraint has
+nothing to bite on. It is the cash chain, as section 26 measured: more tiles →
+more crew → crew costs cash → no cash on days 3–15 → tiles die unwatered.
+
+The one genuinely useful number that fell out: **crew sizing that counts travel
+is roughly double what op-turn sizing says** (73 tiles needs 10 workers, op-turn
+sizing says 4). That is the same correction `enpv.crew_needed` already applies
+via TILES_PER_HAND, and it is now derivable instead of fitted.
+
+### 27.4 On bitmaps, space-filling curves, APSP and Hungarian assignment
+
+Assessed against this codebase rather than in general:
+
+- **Precomputed APSP / "never run BFS or A\* in the engine"** — already
+  satisfied by construction. `grep -rn "bfs|dijkstra|astar|A\*"` over
+  `route/ dynamic/ planner/` returns **nothing**: movement is unrestricted and
+  LOCKED tiles are passable, so `route/geom.dist` is plain Manhattan and already
+  O(1). There is no path search to remove.
+- **Space-filling curve for routing** — `partition` already sorts by an angular
+  sweep around the shed, which has the locality property a Z-order or Hilbert
+  index would provide. Same role, already present.
+- **Bitboards** — would speed up set operations, but speed is not binding: a
+  full game is 0.4s, the agent runs 85 tiles without incident, and nothing times
+  out. There is no crash to prevent.
+- **Hungarian / LAP instead of the greedy sweep** — the only one with real
+  algorithmic upside, and it has no slack to recover: at 12 workers the current
+  partition already drops zero tasks at 73 tiles. It is also a wholesale
+  replacement of a co-adapted component, which is the shape that has failed six
+  times here.
