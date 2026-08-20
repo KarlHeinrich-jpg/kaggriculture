@@ -193,6 +193,90 @@ def encode_scalars(obs, farm, private, opp_farm, opp_state, day, hour):
     return v
 
 
+ROLES = list(CROPS) + ["GOOSE", "COW", "SHEEP"]
+
+
+def board_feature_names():
+    n = [f"our.{r}" for r in ROLES] + [f"opp.{r}" for r in ROLES]
+    n += [f"our.stage.{c}" for c in CROPS]
+    n += ["our.empty", "our.weeds", "opp.weeds", "our.watered_frac",
+          "our.mean_dist_shed", "opp.mean_dist_shed",
+          "our.ready", "opp.ready", "our.at_risk", "opp.at_risk",
+          "our.producing"]
+    n += [f"our.density.{q}" for q in ("NW", "NE", "SW", "SE")]
+    return n
+
+
+BOARD_FEATURES = len(board_feature_names())
+
+
+def extract_board_features(farm, opp_farm, day):
+    """The board as interpretable STATISTICS instead of 2,100 raw tile floats.
+
+    Every entry is a count, a mean or a fraction with a name, so a linear policy
+    over them reads as a rule. This replaces the two 10x10xC planes that were
+    the only reason the daily head could not be white-box: the sell head was
+    already scalar-only.
+
+    Normalised to roughly [0, 1] so coefficients are comparable across features
+    -- otherwise a raw tile count would dominate a fraction purely by scale.
+    """
+    def one(f):
+        cnt = {r: 0 for r in ROLES}
+        stage = {c: [] for c in CROPS}
+        empty = weeds = watered = ready = at_risk = 0
+        dists, quad = [], {"NW": 0, "NE": 0, "SW": 0, "SE": 0}
+        tiles = (f or {}).get("tiles") or []
+        for y, row in enumerate(tiles):
+            for x, t in enumerate(row):
+                if t == "LOCKED":
+                    continue
+                q = ("NW" if x < 5 and y < 5 else "NE" if y < 5 else
+                     "SW" if x < 5 else "SE")
+                if t is None:
+                    empty += 1
+                    continue
+                if not isinstance(t, dict):
+                    continue
+                kind = t.get("kind")
+                if kind == "WEED":
+                    weeds += 1
+                    continue
+                a = t.get("animal")
+                crop = t.get("crop") if kind == "PLANT" else None
+                role = a or crop
+                if role in cnt:
+                    cnt[role] += 1
+                    quad[q] += 1
+                    dists.append(abs(x - 4) + abs(y - 4))
+                if crop in stage:
+                    age = day - int(t.get("planted_day", day))
+                    stage[crop].append(min(1.0, age / 12.0))
+                    if t.get("watered_today"):
+                        watered += 1
+                    if int(t.get("consecutive_unwatered", 0)) >= 1:
+                        at_risk += 1
+                if int(t.get("yield_units", 0) or 0) > 0:
+                    ready += 1
+                if a and int(t.get("consecutive_unfed", 0)) >= 1:
+                    at_risk += 1
+        n_role = sum(cnt.values())
+        return cnt, stage, empty, weeds, watered, ready, at_risk, dists, quad, n_role
+
+    (c1, st1, e1, w1, wat1, rd1, ar1, d1, q1, n1) = one(farm)
+    (c2, _st2, _e2, w2, _wa2, rd2, ar2, d2, _q2, n2) = one(opp_farm)
+
+    v = [c1[r] / 25.0 for r in ROLES] + [c2[r] / 25.0 for r in ROLES]
+    v += [(sum(st1[c]) / len(st1[c])) if st1[c] else 0.0 for c in CROPS]
+    v += [e1 / 50.0, w1 / 25.0, w2 / 25.0,
+          (wat1 / n1) if n1 else 0.0,
+          (sum(d1) / len(d1) / 8.0) if d1 else 0.0,
+          (sum(d2) / len(d2) / 8.0) if d2 else 0.0,
+          rd1 / 25.0, rd2 / 25.0, ar1 / 25.0, ar2 / 25.0, n1 / 75.0]
+    v += [q1[q] / 25.0 for q in ("NW", "NE", "SW", "SE")]
+    return v
+
+
 def scalar_names():
     """Name every entry of `encode_scalars`, in order.
 
@@ -213,6 +297,17 @@ def scalar_names():
 
 SPATIAL_SIZE = BOARD * BOARD * C
 SCALAR_SIZE = 9 + 8 * len(PRODUCTS) + len(CROPS)
+WHITEBOX_SIZE = BOARD_FEATURES + SCALAR_SIZE
+
+
+def whitebox_names():
+    return board_feature_names() + scalar_names()
+
+
+def encode_whitebox(obs, farm, private, opp_farm, opp_state, day, hour):
+    """Board statistics + global scalars: the full white-box observation."""
+    return (extract_board_features(farm, opp_farm, day)
+            + encode_scalars(obs, farm, private, opp_farm, opp_state, day, hour))
 OBS_SIZE = 2 * SPATIAL_SIZE + SCALAR_SIZE
 
 

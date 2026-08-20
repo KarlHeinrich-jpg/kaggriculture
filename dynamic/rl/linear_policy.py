@@ -170,3 +170,66 @@ class NumpyLinearPolicy(PA.Policy):
         self.traj["sell"].append((market_vec, idx, logp, v))
         return {item: PA.SELL_LEVELS[idx[i]]
                 for i, item in enumerate(PA.PRODUCTS)}
+
+
+class LinearDailyNet(nn.Module):
+    """The daily head, white-box.
+
+        z_a = w_a . x + b_a          x in R^122, one weight per NAMED feature
+        pi(a|x) = softmax_a(z_a)
+
+    The 122 inputs are 36 board STATISTICS (counts per role for both players,
+    mean growth stage per crop, weeds, empty tiles, watered fraction, mean
+    distance to shed, quadrant densities) plus the 86 named scalars. The raw
+    10x10xC planes are gone, which were the only reason this head could not be
+    read -- the sell head was already scalar-only.
+
+    Every coefficient is a rule: w[our.WHEAT, crop=STRAWBERRY] = +0.02 says one
+    more wheat tile raises the strawberry logit by 0.02.
+    """
+
+    def __init__(self, obs=None):
+        super().__init__()
+        obs = obs or E.WHITEBOX_SIZE
+        self.names = list(E.whitebox_names())
+        self.n_in = obs
+        self.heads = nn.ModuleDict({
+            name: nn.Linear(obs, n) for name, n in PA.DAILY_HEADS.items()})
+        self.value = nn.Linear(obs, 1)
+        self.init_identity()
+
+    def init_identity(self, logit=6.0):
+        for name, head in self.heads.items():
+            nn.init.zeros_(head.weight)
+            nn.init.zeros_(head.bias)
+            if name == "crew_delta":
+                head.bias.data[PA.CREW_DELTAS.index(0)] = logit
+            elif name == "buy_land":
+                head.bias.data[0] = logit
+            elif name == "animal":
+                head.bias.data[PA.ANIMAL_CHOICES.index(None)] = logit
+            # crop_pref stays all-zero: uniform softmax IS weight 1.0, the identity
+        nn.init.zeros_(self.value.weight)
+        nn.init.zeros_(self.value.bias)
+
+    def forward(self, x):
+        return ({k: h(x) for k, h in self.heads.items()},
+                self.value(x).squeeze(-1))
+
+    def explain(self, head="crop_pref", top=8, min_abs=0.01):
+        """Print the weight table for one head, largest magnitude first."""
+        W = self.heads[head].weight.data
+        labels = (PA.CROPS if head == "crop_pref" else
+                  [str(d) for d in PA.CREW_DELTAS] if head == "crew_delta" else
+                  [str(a) for a in PA.ANIMAL_CHOICES] if head == "animal" else
+                  ["no", "yes"])
+        out = []
+        for ai, lab in enumerate(labels[:W.shape[0]]):
+            col = W[ai].tolist()
+            ranked = sorted(range(self.n_in), key=lambda i: -abs(col[i]))
+            lines = [f"      {self.names[i]:<26} {col[i]:+7.4f}"
+                     for i in ranked[:top] if abs(col[i]) >= min_abs]
+            if lines:
+                out.append(f"  {head} -> {lab}:")
+                out.extend(lines)
+        return "\n".join(out) or f"  ({head} still at the identity)"
