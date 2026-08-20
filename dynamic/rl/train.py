@@ -67,6 +67,8 @@ from dynamic.rl.net import (DailyNet, SellNet, NumpyPolicy, export_numpy,     # 
 
 AGENT = os.path.join(ROOT, "dynamic", "rl", "agent_rl.py")
 CKPT_DIR = os.path.join(ROOT, "logs", "rl")
+PHI_SCALE = 60000.0      # bank difference at which the potential saturates
+SHAPE_BETA = 1.0         # weight on the potential term
 POOL = ["kaggriculture-multi-route-farming-agent",
         "v111-8c4s-economic-core-premium-lead",
         "kaggriculture-frontier-the-soil-remembers-rain",
@@ -129,6 +131,7 @@ def rollout(job):
     from planner.simulate import Simulator
     out = []
     margins = []
+    shapes = []
     try:
         for seat in (0, 1):
             pol = NumpyPolicy(_W["weights"], explore=True,
@@ -142,10 +145,26 @@ def rollout(job):
                 op = _load_opp(opp_name)
             pair = [me, op] if seat == 0 else [op, me]
             sim = Simulator.new_episode(configuration={"episodeSteps": 720}, seed=seed)
-            m0, m1 = sim.run_episode(pair[0], pair[1])
+            # Stepped rather than run_episode, to sample the bank difference once
+            # a day. That is the potential the dense shaping is built from, and
+            # a day is the right granularity: both heads decide once a day now,
+            # so every decision gets its own shaping term.
+            from planner.simulate import _agent_caller
+            c0, c1 = _agent_caller(pair[0]), _agent_caller(pair[1])
+            phis = []
+            while sim.step < 719:
+                a0 = c0(sim.observation_for(0), sim.cfg)
+                a1 = c1(sim.observation_for(1), sim.cfg)
+                sim.step_actions(a0, a1)
+                if sim.step % 24 == 0:
+                    b0, b1 = sim.farms[0]["money"], sim.farms[1]["money"]
+                    d = (b0 - b1) if seat == 0 else (b1 - b0)
+                    phis.append(math.tanh(d / PHI_SCALE))
+            m0, m1 = sim.farms[0]["money"], sim.farms[1]["money"]
             us, them = (m0, m1) if seat == 0 else (m1, m0)
             margins.append(us - them)
             out.append(pol.traj)
+            shapes.append(phis)
     except Exception:
         import traceback
         return None, traceback.format_exc()[-200:]
@@ -162,22 +181,52 @@ def rollout(job):
     # taken from the spread actually observed rather than guessed.
     r = (1.0 if paired > 0 else -1.0 if paired < 0 else 0.0)
     r += 0.75 * math.tanh(paired / 120000.0)
-    return (out, r, paired, opp_name == "__self__"), None
+    return (out, r, paired, opp_name == "__self__", shapes), None
 
 
-def _flatten(trajs, reward, gamma=0.999, lam=0.95):
-    """GAE over each head's own sequence. The two heads act at different
-    cadences, so they are advantaged separately rather than interleaved."""
+def _flatten(trajs, reward, gamma=0.999, lam=0.95, shaping=None, beta=SHAPE_BETA):
+    """GAE per head, with POTENTIAL-BASED dense shaping.
+
+    The terminal reward alone gives one informative signal per episode shared by
+    every decision in it, which is the measured bottleneck: tighten the KL leash
+    and the policy never moves, loosen it and it walks off a tuned strategy
+    along a gradient that is mostly noise.
+
+    Shaping fixes the density, but an arbitrary dense bonus changes what the
+    optimal policy IS -- the agent starts maximising the proxy. A POTENTIAL
+    function does not (Ng, Harada & Russell 1999):
+
+        F(s, s') = gamma * Phi(s') - Phi(s)
+
+    telescopes over the episode, so the return changes by a constant and the
+    argmax is provably unchanged. Phi here is tanh of the bank difference, which
+    is the quantity the terminal reward already scores, so the dense term is a
+    smoothed early view of the same objective rather than a different one.
+
+    Deliberately NOT in Phi: asset value and held stock. The shed caps at 100
+    items and discards the overflow, and holding stock for price measured
+    -32,749 -- rewarding inventory would teach exactly the behaviour that was
+    already refuted.
+    """
     batches = {"daily": [], "sell": []}
-    for traj in trajs:
+    for ti, traj in enumerate(trajs):
+        phis = (shaping or [])[ti] if shaping and ti < len(shaping) else []
         for key in ("daily", "sell"):
             seq = traj[key]
             if not seq:
                 continue
             vals = [t[3] for t in seq] + [0.0]
+            # map decision index onto the per-day potential samples
+            def phi(i, n=len(seq), P=phis):
+                if not P:
+                    return 0.0
+                return P[min(len(P) - 1, int(i * len(P) / max(1, n)))]
             adv, gae = [0.0] * len(seq), 0.0
             for i in reversed(range(len(seq))):
                 r = reward if i == len(seq) - 1 else 0.0
+                if beta and phis:
+                    nxt = phi(i + 1) if i + 1 < len(seq) else phi(len(seq) - 1)
+                    r += beta * (gamma * nxt - phi(i))
                 delta = r + gamma * vals[i + 1] - vals[i]
                 gae = delta + gamma * lam * gae
                 adv[i] = gae
@@ -368,8 +417,8 @@ def main():
         # Split out, the question is direct: self-play win rate above 50% means
         # the policy beats the frozen snapshot of itself, i.e. it is improving.
         sp_res, pool_res = [], []
-        for trajs, r, paired, is_self in good:
-            b = _flatten(trajs, r)
+        for trajs, r, paired, is_self, shapes in good:
+            b = _flatten(trajs, r, shaping=shapes)
             batches["daily"] += b["daily"]
             batches["sell"] += b["sell"]
             rewards.append(r)

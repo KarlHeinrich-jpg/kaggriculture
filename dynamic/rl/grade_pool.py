@@ -37,7 +37,8 @@ _W = {}
 
 def candidates(limit=None):
     seen, out = set(), []
-    for sub in ("opponents", "agents", "pool"):
+    for sub in ("opponents", "opponents/external", "opponents/rungs",
+                "agents", "pool"):
         d = os.path.join(ROOT, sub)
         if not os.path.isdir(d):
             continue

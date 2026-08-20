@@ -56,12 +56,22 @@ def _mlp(sizes, act=nn.GELU):
 
 
 class DailyNet(nn.Module):
-    """Strategic head: once a day, full observation."""
+    """Strategic head: once a day, full observation.
+
+    The value function gets its OWN trunk. Sharing one made the value loss
+    reshape the very features the policy depends on: the value head starts at
+    zero against returns near -0.5, so its early gradients are large, and vf had
+    to be cut 0.5 -> 0.25 to keep the policy stable at all. Separate trunks cost
+    ~1.2M parameters, which at fp16 is ~2.4 MB on a budget that has room, and
+    remove the coupling entirely.
+    """
 
     def __init__(self, obs=PA.DAILY_OBS, width=256, depth=3):
         super().__init__()
         self.trunk = _mlp([obs] + [width] * depth)
         self.norm = nn.LayerNorm(width)
+        self.vtrunk = _mlp([obs] + [width] * depth)
+        self.vnorm = nn.LayerNorm(width)
         self.heads = nn.ModuleDict({
             name: nn.Linear(width, n) for name, n in PA.DAILY_HEADS.items()})
         self.value = nn.Linear(width, 1)
@@ -85,7 +95,8 @@ class DailyNet(nn.Module):
 
     def forward(self, x):
         h = self.norm(F.gelu(self.trunk(x)))
-        return {k: head(h) for k, head in self.heads.items()}, self.value(h).squeeze(-1)
+        v = self.vnorm(F.gelu(self.vtrunk(x)))
+        return {k: head(h) for k, head in self.heads.items()}, self.value(v).squeeze(-1)
 
 
 class SellNet(nn.Module):
@@ -101,6 +112,8 @@ class SellNet(nn.Module):
         super().__init__()
         self.trunk = _mlp([obs] + [width] * depth)
         self.norm = nn.LayerNorm(width)
+        self.vtrunk = _mlp([obs] + [width] * depth)
+        self.vnorm = nn.LayerNorm(width)
         self.head = nn.Linear(width, len(PA.PRODUCTS) * len(PA.SELL_LEVELS))
         self.value = nn.Linear(width, 1)
         self.init_identity()
@@ -117,9 +130,10 @@ class SellNet(nn.Module):
 
     def forward(self, x):
         h = self.norm(F.gelu(self.trunk(x)))
+        v = self.vnorm(F.gelu(self.vtrunk(x)))
         logits = self.head(h).view(*x.shape[:-1], len(PA.PRODUCTS),
                                    len(PA.SELL_LEVELS))
-        return logits, self.value(h).squeeze(-1)
+        return logits, self.value(v).squeeze(-1)
 
 
 class TorchPolicy(PA.Policy):
@@ -225,6 +239,14 @@ class NumpyPolicy(PA.Policy):
             self.L[tag] = [(np.ascontiguousarray(W[f"{tag}.trunk.{2 * i}.weight"].T),
                             W[f"{tag}.trunk.{2 * i}.bias"]) for i in range(depth)]
             self.L[tag + "_norm"] = (W[f"{tag}.norm.weight"], W[f"{tag}.norm.bias"])
+            # value trunk; only needed to reproduce the value output, but kept so
+            # the numpy path stays a faithful mirror of the torch one.
+            if f"{tag}.vtrunk.0.weight" in W:
+                self.L[tag + "_v"] = [
+                    (np.ascontiguousarray(W[f"{tag}.vtrunk.{2 * i}.weight"].T),
+                     W[f"{tag}.vtrunk.{2 * i}.bias"]) for i in range(depth)]
+                self.L[tag + "_vnorm"] = (W[f"{tag}.vnorm.weight"],
+                                          W[f"{tag}.vnorm.bias"])
         self.explore = explore
         self.rng = np.random.default_rng(seed)
         self.traj = {"daily": [], "sell": []}
@@ -235,15 +257,15 @@ class NumpyPolicy(PA.Policy):
     def _gelu(self, h):
         return h * 0.5 * (1.0 + self.np.tanh(0.7978845608 * (h + 0.044715 * h ** 3)))
 
-    def _trunk(self, x, tag, depth):
+    def _trunk(self, x, tag, depth, which=""):
         h = x
-        layers = self.L[tag]
+        layers = self.L[tag + which]
         for i, (w, b) in enumerate(layers):
             h = h @ w + b
             if i < len(layers) - 1:
                 h = self._gelu(h)
         h = self._gelu(h)
-        g, be = self.L[tag + "_norm"]
+        g, be = self.L[tag + ("_vnorm" if which == "_v" else "_norm")]
         m, v = h.mean(-1, keepdims=True), h.var(-1, keepdims=True)
         return (h - m) / self.np.sqrt(v + 1e-5) * g + be
 
@@ -267,7 +289,8 @@ class NumpyPolicy(PA.Policy):
             i = self._pick(p)
             picks[name] = i
             logp += float(self.np.log(p[i] + 1e-9))
-        v = float((h @ self.W["d.value.weight"].T + self.W["d.value.bias"])[0])
+        hv = self._trunk(x, "d", 3, "_v") if "d_v" in self.L else h
+        v = float((hv @ self.W["d.value.weight"].T + self.W["d.value.bias"])[0])
         self.traj["daily"].append((obs_vec, picks, logp, v))
         zc = h @ self.W["d.heads.crop_pref.weight"].T + self.W["d.heads.crop_pref.bias"]
         w = self._softmax(zc)
@@ -289,7 +312,8 @@ class NumpyPolicy(PA.Policy):
             j = self._pick(p[i])
             idx.append(j)
             logp += float(self.np.log(p[i, j] + 1e-9))
-        v = float((h @ self.W["s.value.weight"].T + self.W["s.value.bias"])[0])
+        hv = self._trunk(x, "s", 2, "_v") if "s_v" in self.L else h
+        v = float((hv @ self.W["s.value.weight"].T + self.W["s.value.bias"])[0])
         self.traj["sell"].append((market_vec, idx, logp, v))
         return {item: PA.SELL_LEVELS[idx[i]] for i, item in enumerate(PA.PRODUCTS)}
 
