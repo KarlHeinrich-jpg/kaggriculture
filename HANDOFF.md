@@ -1674,3 +1674,65 @@ This is the same conclusion the margin-based run reached, now with a metric that
 is 29-45% more sensitive and a confirmation gate that cannot bank noise. The
 hand-tuned configuration this session produced is at a local optimum that random
 mutation is not escaping.
+
+---
+
+## 31. The sell threshold: the largest confirmed effect of the session (2026-08-20)
+
+`SHED_PANIC_FRACTION` governs the branch that offers **79% of all units we
+sell** ("shed passed X% -> dump everything"). Moving it off the searched value
+of 0.25 wins overwhelmingly on WIN RATE while leaving mean margin at zero.
+
+Baseline `best_genome3.json`, three disjoint seed sets:
+
+| value | margin | margin t | win rate | win rate t | W-L |
+|---|---|---|---|---|---|
+| 0.25 (baseline) | +0 | — | 50.0% | — | — |
+| **0.35** | -45 | -0.24 | **88.6%** | **10.98** | 179-23 |
+| **0.40** | +28 | 0.09 | **83.6%** | **12.11** | 271-53 |
+| **0.45** | +182 | 0.57 | **77.6%** | **10.02** | 256-74 |
+| 0.60 | +146 | 0.44 | 61.3% | 4.15 | 206-130 |
+| 0.75 | -352 | -0.99 | 48.8% | -0.44 | 164-172 |
+| 0.90 | -1,701 | -4.10 | 40.5% | -3.49 | 136-200 |
+
+**Margin is zero throughout and win rate is t=10-12.** Under the project's
+standard metric this effect is invisible; it exists only because the evaluation
+moved to a paired win rate. Since `publicScore` is a skill rating driven by
+match outcomes (section 7), win rate is the metric aligned with the objective.
+
+**Consequence: every margin-scored sweep in this document may have missed
+effects of this shape.** Re-scoring the important ones under win rate is worth
+doing before trusting any of their nulls.
+
+### A methodology failure that nearly buried it
+
+The first confirmation run reported all four coordinate-descent candidates as
+refuted, `SHED_PANIC=0.40` at t=-1.27. That run loaded `best_genome.json` as its
+baseline while the run it was confirming had loaded `best_genome3.json`. Same
+parameter values, two different references, so neither direction meant anything.
+`dynamic/cd_confirm.py` now takes `BASE_CKPT` from the environment and PRINTS
+it. **A confirmation must state which checkpoint it is confirming against.**
+
+## 32. RL on the scheduler: interface built, identity control passes
+
+The policy sits on top of the scheduler and answers four decisions rather than
+emitting raw ops, which collapses the action space, keeps the model shippable
+(1-5M params, not 200M), and preserves the scheduler as a fallback.
+
+`dynamic/rl/encode.py` -- 10x10x21 spatial per farm + 86 scalars = 4,286 floats,
+0.29 ms. Opponent holdings are an INTERVAL, not a point estimate: the tracker's
+ledger gives the lower bound, floor-sale invisibility gives the upper, and the
+100-item shed caps the vector. Width is fed in as an explicit confidence signal.
+
+`dynamic/rl/policy_api.py` -- two cadences, because encoding is not free at 720
+steps a game: a strategic head once a DAY on the full observation (30 calls),
+and a sell head every turn on the market scalars only (86 floats, ~25x cheaper).
+
+`dynamic/rl/agent_rl.py` -- agent4 with the four hooks. **With a ScriptedPolicy
+it reproduces agent4 byte for byte on 4 seeds** (47,669 / 55,035 / 67,210 /
+91,945). That identity is the control for the entire RL line.
+
+Section 31 is the evidence that the sell head is where the value is: one
+CONSTANT in that branch is worth 88.6% win rate. A state-dependent policy with
+the price slope, the drain rate and the opponent belief interval in front of it
+has strictly more to say there.
