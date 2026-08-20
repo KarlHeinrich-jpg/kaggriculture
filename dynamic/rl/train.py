@@ -13,6 +13,15 @@ from BOTH seats against the same opponent and the reward is the paired outcome.
 That removes the seat term from the gradient instead of asking the network to
 learn around it.
 
+SELF-PLAY IS REQUIRED FOR THE SIGN TERM TO CARRY INFORMATION. Against the
+reference pool alone the agent loses 100% of paired episodes, so sign(paired) is
+a constant and only the margin term teaches anything. Playing a FROZEN SNAPSHOT
+of the current policy puts the win rate at 50% by construction, which is where a
+win/loss signal has the most information in it. The references stay in the mix
+so the policy cannot drift into beating only itself -- that is the Lux AI
+opponent-pool lesson, and it is also why the snapshot is frozen and refreshed on
+a delay rather than being the live weights.
+
 OPPONENT POOL, not pure self-play. Lux AI's lesson, and it matches the local
 evidence: our pool of reference agents differs in style, and an agent tuned
 against one family transfers badly. Snapshots of the training policy are added
@@ -25,6 +34,7 @@ onto a GPU would need a vectorised environment -- a rewrite with a fidelity risk
 this project has repeatedly paid for.
 """
 import json
+import math
 import multiprocessing as mp
 import os
 import random
@@ -89,12 +99,13 @@ def _load_opp(name):
 _W = {}
 
 
-def _worker_init(weights):
+def _worker_init(weights, snapshot):
     # Workers run the NUMPY forward, not torch: measured 1,917 us against 25 us
     # for a SellNet call, because torch pays a Python dispatch and a kernel
     # launch per op on 128-element tensors. Over a game that is 2.72 s against
     # 1.87 s, and it is the same code path the submission has to use anyway.
     _W["weights"] = weights
+    _W["snapshot"] = snapshot
     _W["genome"] = _base_genome()
 
 
@@ -110,7 +121,12 @@ def rollout(job):
             pol = NumpyPolicy(_W["weights"], explore=True,
                               seed=(seed * 7 + seat * 13 + wid) & 0x7fffffff)
             me = _load_agent(_W["genome"], pol, f"rl_{os.getpid()}_{seat}")
-            op = _load_opp(opp_name)
+            if opp_name == "__self__":
+                opp_pol = NumpyPolicy(_W["snapshot"], explore=True,
+                                      seed=(seed * 11 + seat * 17 + wid) & 0x7fffffff)
+                op = _load_agent(_W["genome"], opp_pol, f"rlopp_{os.getpid()}_{seat}")
+            else:
+                op = _load_opp(opp_name)
             pair = [me, op] if seat == 0 else [op, me]
             sim = Simulator.new_episode(configuration={"episodeSteps": 720}, seed=seed)
             m0, m1 = sim.run_episode(pair[0], pair[1])
@@ -121,10 +137,18 @@ def rollout(job):
         import traceback
         return None, traceback.format_exc()[-200:]
     paired = margins[0] + margins[1]
-    # +1/-1 on the paired result, plus a small tie-breaker that can never
-    # outweigh it (|margin term| <= 0.25 by construction).
+    # THE REWARD MUST HAVE VARIANCE, and the first version did not. It was
+    #     r = sign(paired) + 0.25 * clamp(paired / 60000)
+    # and against this opponent pool the agent loses every paired episode while
+    # margins run near -76,000, so BOTH terms pinned: the sign at -1 and the
+    # clamp at -1. Every episode returned exactly -1.25, advantages normalised
+    # to zero, and PPO learned nothing -- 0.0% win rate over three iterations
+    # was not a hard problem, it was no gradient at all.
+    #
+    # tanh keeps the margin term informative at any scale, and the divisor is
+    # taken from the spread actually observed rather than guessed.
     r = (1.0 if paired > 0 else -1.0 if paired < 0 else 0.0)
-    r += 0.25 * max(-1.0, min(1.0, paired / 60000.0))
+    r += 0.75 * math.tanh(paired / 120000.0)
     return (out, r, paired), None
 
 
@@ -207,6 +231,10 @@ def main():
     ap.add_argument("--workers", type=int, default=26)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--hours", type=float, default=48.0)
+    ap.add_argument("--self_play", type=float, default=0.6,
+                    help="fraction of episodes played against a frozen self")
+    ap.add_argument("--snapshot_every", type=int, default=10)
+    ap.add_argument("--snapshot_keep", type=int, default=5)
     args = ap.parse_args()
 
     os.makedirs(CKPT_DIR, exist_ok=True)
@@ -222,16 +250,26 @@ def main():
     t0 = time.time()
     log = open(os.path.join(CKPT_DIR, "train.log"), "a")
     best = -9e9
+    snapshots = []
     for it in range(args.iters):
         if time.time() - t0 > args.hours * 3600:
             print("time budget reached", flush=True)
             break
         weights = to_numpy_weights(dnet, snet)
-        jobs = [(rng.randrange(10 ** 6, 2 ** 31 - 1), rng.choice(POOL), w)
+        # A frozen self from a few iterations back. Refreshed on a delay so the
+        # opponent is a fixed target within an iteration rather than a moving
+        # one, which is what keeps self-play from chasing its own tail.
+        if it % args.snapshot_every == 0 or not snapshots:
+            snapshots.append({k: v.copy() for k, v in weights.items()})
+            del snapshots[:-args.snapshot_keep]
+        snapshot = snapshots[rng.randrange(len(snapshots))]
+        def _pick_opp():
+            return "__self__" if rng.random() < args.self_play else rng.choice(POOL)
+        jobs = [(rng.randrange(10 ** 6, 2 ** 31 - 1), _pick_opp(), w)
                 for w in range(args.episodes)]
         with mp.get_context("forkserver").Pool(
                 args.workers, initializer=_worker_init,
-                initargs=(weights,)) as pool:
+                initargs=(weights, snapshot)) as pool:
             res = pool.map(rollout, jobs, chunksize=1)
         errs = [e for _, e in res if e]
         good = [r for r, e in res if e is None]
