@@ -35,11 +35,13 @@ sys.path[:] = [q for q in sys.path
 sys.path.insert(0, ROOT)
 LOGDIR = os.path.join(ROOT, "logs", "rl")
 LOG = os.path.join(LOGDIR, "train.out")
+LOG2 = os.path.join(LOGDIR, "train.log")
 
 LINE = re.compile(
     r"^iter\s+(\d+)\s+winrate\s+([\d.]+)%\s+paired\s+([-+,\d]+)\s+"
     r"reward\s+([-+.\d]+)\s+"
     r"(?:selfwr\s+([\d.nan]+)%\s+poolwr\s+([\d.nan]+)%\s+)?"
+    r"(?:rung\s+(\d+)\s+)?"
     r"p_id\s+([\d.]+)")
 
 C = {"r": "\033[0m", "b": "\033[1m", "dim": "\033[2m", "g": "\033[32m",
@@ -48,9 +50,10 @@ C = {"r": "\033[0m", "b": "\033[1m", "dim": "\033[2m", "g": "\033[32m",
 
 def parse():
     rows = []
-    if not os.path.exists(LOG):
+    src = LOG if os.path.exists(LOG) else LOG2
+    if not os.path.exists(src):
         return rows
-    with open(LOG, errors="ignore") as fh:
+    with open(src, errors="ignore") as fh:
         for ln in fh:
             m = LINE.match(ln.strip())
             if not m:
@@ -60,7 +63,8 @@ def parse():
                          "paired": float(m.group(3).replace(",", "")),
                          "reward": float(m.group(4)),
                          "self": f(m.group(5)), "pool": f(m.group(6)),
-                         "pid": float(m.group(7))})
+                         "rung": int(m.group(7)) if m.group(7) else 0,
+                         "pid": float(m.group(8))})
     return rows
 
 
@@ -98,6 +102,67 @@ def verdict(t):
     if tv < -2:
         return f"{C['red']}DOWN {d:+8.1f}  t {tv:+5.2f}{C['r']}"
     return f"{C['y']}flat {d:+8.1f}  t {tv:+5.2f}{C['r']}"
+
+
+def chart(series, height=14, width=64, lo=None, hi=None, hline=None,
+          hlabel=""):
+    """Overlaid line chart for the terminal.
+
+    `series` is [(label, marker, colour, values)]. History is bucketed into
+    `width` columns and each bucket is MEANED rather than sampled -- a single
+    iteration is 96 paired episodes with se ~5pp, so plotting raw points draws
+    the noise instead of the trend.
+    """
+    live = [(l, m, c, v) for l, m, c, v in series if v]
+    if not live:
+        return f"    {C['dim']}(no data yet){C['r']}"
+    allv = [x for _l, _m, _c, v in live for x in v]
+    lo = min(allv) if lo is None else lo
+    hi = max(allv) if hi is None else hi
+    if hi - lo < 1e-9:
+        hi = lo + 1.0
+    pad = (hi - lo) * 0.08
+    lo, hi = lo - pad, hi + pad
+
+    grid = [[" "] * width for _ in range(height)]
+    colour = [[""] * width for _ in range(height)]
+
+    def row_of(val):
+        f = (val - lo) / (hi - lo)
+        return max(0, min(height - 1, int(round((1 - f) * (height - 1)))))
+
+    if hline is not None and lo <= hline <= hi:
+        r = row_of(hline)
+        for c in range(width):
+            grid[r][c] = "-"
+            colour[r][c] = C["dim"]
+
+    for _label, marker, col, vals in live:
+        n = len(vals)
+        for c in range(width):
+            a = int(c * n / width)
+            b = max(a + 1, int((c + 1) * n / width))
+            chunk = vals[a:b]
+            if not chunk:
+                continue
+            r = row_of(statistics.mean(chunk))
+            grid[r][c] = marker
+            colour[r][c] = col
+
+    out = []
+    for r in range(height):
+        val = hi - (hi - lo) * r / (height - 1)
+        body = "".join((colour[r][c] + grid[r][c] + C["r"]) if grid[r][c] != " "
+                       else " " for c in range(width))
+        out.append(f"   {val:>6.1f} |{body}")
+    out.append(f"   {'':>6} +{'-' * width}")
+    key = "  ".join(f"{col}{mk}{C['r']} {lb}" for lb, mk, col, _v in live)
+    n = max(len(v) for _l, _m, _c, v in live)
+    out.append(f"   {'':>6}  0{' ' * max(0, width - 12)}iter {n}")
+    if hline is not None:
+        key += f"   {C['dim']}- {hlabel}{C['r']}"
+    out.append(f"   {'':>6}  {key}")
+    return "\n".join(out)
 
 
 def _rules_block(max_lines=14):
@@ -167,6 +232,18 @@ def render():
     line("POOL wr", "pool")
     line("paired", "paired", "{:+,.0f}")
     line("p_id", "pid", "{:.3f}")
+    line("rung", "rung", "{:.0f}")
+    A("")
+    A(f"  {C['b']}win rate over training{C['r']}")
+    A(chart([("SELF (vs frozen self)", "o", C["g"],
+              [r["self"] for r in rows if r["self"] == r["self"]]),
+             ("POOL (vs opponents)", "*", C["cy"],
+              [r["pool"] for r in rows if r["pool"] == r["pool"]])],
+            hline=50.0, hlabel="50% = no better than its own snapshot"))
+    A("")
+    A(f"  {C['b']}paired margin{C['r']}")
+    A(chart([("paired", ".", C["y"], [r["paired"] for r in rows])],
+            height=8, hline=0.0, hlabel="0 = level with the opponent"))
     A("")
     A(f"  {C['b']}trend (first third vs last third){C['r']}")
     for label, key in (("self-play wr", "self"), ("pool wr", "pool"),
