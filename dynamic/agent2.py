@@ -416,6 +416,38 @@ ENPV_VETO = 1           # 1 = refuse purchases with ENPV <= 0, keep the rest
 ENPV_LABOR = 8.0        # $/unit-turn for the veto; ALLOC_LABOR=13 for crops
 ENPV_DRY_DAYS = 2.0     # Reserve_cash = Days_dry_spell * Cost_daily_burn
 ENPV_REPEAT = 6         # cap on identical picks per turn
+# Mean-variance utility: ENPV_risk = E[NPV] - lambda*Var(NPV). Subtractive by
+# construction, which is the shape that has worked here -- it can only make the
+# veto more conservative, never redirect a dollar. The case for it is the veto's
+# own instability: at ENPV_LABOR 10 and 13 it swings between +2,126 and +4,876
+# across seed sets, which is what an unpenalised point estimate does when the
+# quantity behind it is uncertain. Variance is in dollars squared, so lambda is
+# small; 1e-5 to 1e-3 is the range worth scanning.
+# MEASURED AND INERT: lambda 1e-5 fires on 0% of games, 1e-4 on 2% (+11), 1e-3
+# on 31% (+228, t=0.5). The veto is a binary ENPV > 0 test, so a penalty small
+# enough not to refuse everything is too small to flip the sign. Kept because it
+# is the right object if ENPV is ever used for RANKING rather than a sign test.
+ENPV_RISK_LAMBDA = 0.0
+ENPV_DEATH_PROB = 0.0   # per-asset probability of losing the tile outright
+
+# PURCHASE ORDER BY ENPV. The tape's own opening, read off its issued orders:
+#
+#   day 0   MELON x12, WHEAT x7, buy_WHEAT x9, HIRE x5, COW x2, SHEEP x2
+#           -> 23 producing tiles by day 1, on $3,094 of a $3,000 opening
+#   days 1-10  cash never above $1,534; it runs the whole ramp at near zero
+#   day 11  cash jumps to $14,794 as the melon lands, and it buys 23 STRAWBERRY
+#
+# Twelve melon on day 0, against our TC_MELON of 8 for the WHOLE SEASON -- and
+# melon is the one book that never recovers (30 units of season demand against
+# 158 to the floor), so being first into it is the one place quota preemption
+# is real.
+#
+# `_order_seeds` walks a hardcoded list, so when cash runs out it is WHEAT and
+# STRAWBERRY that got bought and MELON that did not. This sorts the same lists
+# by ENPV. It is not a replacement: batch sizes, per-turn caps and the reserve
+# are untouched and the same total is spent. Only the sequence changes, and only
+# where cash binds.
+ENPV_ORDER = 0
 OPP_MODEL = 1
 OPP_SCALE_LO = 0.65
 OPP_SCALE_HI = 1.30
@@ -452,7 +484,8 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "DEFER_STRAWBERRY", "DEFER_MELON", "NURSE_CROP", "NURSE_UNTIL_DAY",
                 "NURSE_LATE", "ALLOC_MODE", "ALLOC_LABOR", "TRUE_LAST_PLANT_DAY",
                 "ENPV_BUY", "ENPV_VETO", "ENPV_LABOR", "ENPV_DRY_DAYS",
-                "ENPV_REPEAT")
+                "ENPV_REPEAT", "ENPV_RISK_LAMBDA", "ENPV_DEATH_PROB",
+                "ENPV_ORDER")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -1132,14 +1165,38 @@ def _role_demand(farm, day):
     return want
 
 
-def _order_animals(orders, money, want, shed, seeds, shed_used):
+def _enpv_rank(names, farm, private, day, kind):
+    """`names` sorted by the ENPV of the next unit, best first. Falls back to
+    the given order when no market context exists."""
+    ctx = S.get("econ")
+    if ctx is None:
+        return list(names)
+    shed = private.get("shed") or {}
+    wheat_px = ctx.market_price("WHEAT")
+    own_wheat = float(shed.get("WHEAT", 0))
+    scored = []
+    for n in names:
+        if kind == "animal":
+            have = _animal_count(farm, n) + int(shed.get(n, 0))
+            v, _ = EN.enpv_animal(n, day, ctx, c_labor=ENPV_LABOR,
+                                  wheat_price=wheat_px, own_wheat=own_wheat,
+                                  n_same=have)
+        else:
+            v, _ = EN.enpv_crop(n, day, ctx, c_labor=ENPV_LABOR,
+                                n_pending=_pending_units(farm, n, day))
+        scored.append((v, n))
+    scored.sort(key=lambda r: -r[0])
+    return [n for _, n in scored]
+
+
+def _order_animals(orders, money, want, shed, seeds, shed_used, order=None):
     """Animals are the compounding asset -- an animal yields every day from
     placement to the end of the season -- but seed for a strawberry planted on
     day 1 also compounds. Which claim on early cash wins is genuinely unobvious,
     so BUY_ANIMALS_FIRST is left to the search rather than guessed here.
     Throttled per turn, and capped by shed room since a bought animal sits in
     the shed until placed."""
-    for role in ("COW", "SHEEP", "GOOSE"):
+    for role in (order or ("COW", "SHEEP", "GOOSE")):
         if len(orders) >= MAX_ORDERS:
             break
         need = want.get(role, 0) - int(shed.get(role, 0))
@@ -1155,10 +1212,10 @@ def _order_animals(orders, money, want, shed, seeds, shed_used):
     return money
 
 
-def _order_seeds(orders, money, want, shed, seeds, shed_used):
+def _order_seeds(orders, money, want, shed, seeds, shed_used, order=None):
     """Seeds never enter the shed, so they cost no capacity -- only cash.
     Batched per turn rather than bought as a whole portfolio at once."""
-    for crop in ("WHEAT", "STRAWBERRY", "MELON", "CARROT", "TOMATO"):
+    for crop in (order or ("WHEAT", "STRAWBERRY", "MELON", "CARROT", "TOMATO")):
         if len(orders) >= MAX_ORDERS:
             break
         need = want.get(crop, 0) - int(seeds.get(crop, 0))
@@ -1189,10 +1246,13 @@ def _enpv_veto(want, farm, private, day):
             have = _animal_count(farm, role) + int(shed.get(role, 0))
             v, _ = EN.enpv_animal(role, day, ctx, c_labor=ENPV_LABOR,
                                   wheat_price=wheat_px, own_wheat=own_wheat,
-                                  n_same=have)
+                                  n_same=have, risk_lambda=ENPV_RISK_LAMBDA,
+                                  death_prob=ENPV_DEATH_PROB)
         elif role in CROPS:
             v, _ = EN.enpv_crop(role, day, ctx, c_labor=ENPV_LABOR,
-                                n_pending=_pending_units(farm, role, day))
+                                n_pending=_pending_units(farm, role, day),
+                                risk_lambda=ENPV_RISK_LAMBDA,
+                                death_prob=ENPV_DEATH_PROB)
         else:
             v = 1.0
         if v > 0:
@@ -1378,12 +1438,23 @@ def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None,
     if ENPV_BUY:
         money = _enpv_orders(orders, money, want, shed, seeds, shed_used,
                              farm, day)
-    elif BUY_ANIMALS_FIRST:
-        money = _order_animals(orders, money, want, shed, seeds, shed_used)
-        money = _order_seeds(orders, money, want, shed, seeds, shed_used)
     else:
-        money = _order_seeds(orders, money, want, shed, seeds, shed_used)
-        money = _order_animals(orders, money, want, shed, seeds, shed_used)
+        a_order = c_order = None
+        if ENPV_ORDER:
+            a_order = _enpv_rank(("COW", "SHEEP", "GOOSE"), farm, private, day,
+                                 "animal")
+            c_order = _enpv_rank(("WHEAT", "STRAWBERRY", "MELON", "CARROT",
+                                  "TOMATO"), farm, private, day, "crop")
+        if BUY_ANIMALS_FIRST:
+            money = _order_animals(orders, money, want, shed, seeds, shed_used,
+                                   a_order)
+            money = _order_seeds(orders, money, want, shed, seeds, shed_used,
+                                 c_order)
+        else:
+            money = _order_seeds(orders, money, want, shed, seeds, shed_used,
+                                 c_order)
+            money = _order_animals(orders, money, want, shed, seeds, shed_used,
+                                   a_order)
 
     # 5. Land. On the tape's schedule when SCHEDULE_DRIVEN, otherwise only once
     #    the next quadrant already has roles waiting.

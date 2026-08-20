@@ -72,6 +72,11 @@ class Ctx:
         self.alpha = float(alpha)
         self._cache = {}
 
+    def slope_of(self, item):
+        """|dP/dq| at the book's current level -- the sensitivity that turns an
+        error in the opponent-supply estimate into an error in our revenue."""
+        return MM.slope(item, int(self.inv.get(item, MM.MARKET_I0)))
+
     def market_price(self, item):
         """The book's current quote, with no marginal or suppression term."""
         return float(MM.price(item, int(self.inv.get(item, MM.MARKET_I0))))

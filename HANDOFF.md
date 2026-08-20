@@ -1315,3 +1315,80 @@ Section 10 is the calibration table -- every coefficient names the data that
 fixed it. Section 11 is the refuted list, with the pattern that now governs how
 work here should be shaped: **additive or subtractive changes hold, wholesale
 replacements break.**
+
+---
+
+## 26. The target, quantified — and three more refutations (2026-08-20)
+
+### What "beat our best model" actually means
+
+Measured on the SAME pool and the SAME seeds, paired margin, both seats
+(n = 336 paired games):
+
+| agent | paired margin |
+|---|---|
+| **shipped `submission/main.py` (tape+market)** | **+12,160** |
+| unmodified kawa tape | +11,628 |
+| dynamic scheduler, this session's best | **−73,390** |
+
+**The gap is 85,550, and the shipped agent wins 329 of 336 paired seeds (98%).**
+Note also that the whole market-intervention layer is worth only +532 over the
+raw tape on this pool — the tape is essentially all of it.
+
+### The tape's own season plan, read off its issued orders
+
+```
+day 0   MELON x12, WHEAT x7, buy_WHEAT x9, HIRE x5, COW x2, SHEEP x2
+        -> 23 producing tiles by day 1, on $3,094 of a $3,000 opening
+day 1-10   cash never rises above $1,534; it runs the entire ramp at ~zero
+day 11  cash jumps to $14,794 as the melon lands, and it buys 23 STRAWBERRY
+day 12  68 producing tiles
+```
+
+Twelve melon on day 0, against our `TC_MELON` of 8 for the entire season — and
+melon is the one book that never recovers (30 units of season demand against 158
+to the floor), so it is the one place quota preemption is real.
+
+### Three more refutations, and a sharper form of the pattern
+
+| lever | shape | result |
+|---|---|---|
+| mean-variance risk adjustment | subtractive | **inert** |
+| ENPV purchase ORDER (same budget, same caps) | re-ordering | **−12,542** |
+| melon-forward opening, TC_MELON 12 / 16 | portfolio | −21,056 / −25,428 |
+| ...with RP_MELON raised to 0.97 | portfolio | −34,036 |
+
+The risk adjustment is inert for a structural reason worth keeping: `ENPV_VETO`
+is a binary `ENPV > 0` test, so a variance penalty small enough not to refuse
+everything is too small to flip a sign. λ=1e-5 fires on 0% of games, 1e-4 on 2%
+(+11), 1e-3 on 31% (+228, t=0.5). Kept, defaulted off; it is the right object if
+ENPV is ever used for RANKING instead of a sign test.
+
+**`ENPV_ORDER` sharpens the pattern.** It changes nothing about how much is
+bought — batch sizes, per-turn caps and the reserve are untouched, and the same
+total is spent. Only the SEQUENCE changes, and only where cash binds. It costs
+−12,542. So the boundary is not "replacement vs addition" in any loose sense:
+
+$$\text{touching a co-adapted decision AT ALL} \Rightarrow \text{breaks}$$
+$$\text{acting only where the policy does nothing, or only declining} \Rightarrow \text{holds}$$
+
+### What this implies for the remaining gap
+
+Closing 85,550 by hand is not on the evidence available. Roughly 25 distinct
+levers have now been refuted across two sessions, spanning the market layer, the
+day scheduler, the portfolio, cash flow, opening order and global resource
+allocation. The three that worked total +7,519 and all three are additive or
+subtractive.
+
+The one honest lever left is not an insight, it is COMPUTE: `best_genome.json`
+was searched against `dynamic/agent.py` before any of the market model, the
+allocator or the veto existed, and it peaked at generation 1 and then went 17
+generations without improving. **It is an optimum of a different agent.** A
+search does not suffer the co-adaptation problem that every hand-written
+subsystem hit this session, because it re-adapts every parameter at once.
+
+`dynamic/search2.py` seeds from the current shipped configuration, puts the two
+new labour prices and the two new switches in the genome, and keeps the fitness
+unchanged (paired margin, common random numbers, both seats, ladder-range
+seeds). `ALLOC_MODE=2` and `ENPV_BUY` are deliberately NOT in the search space —
+both are measured strongly negative.

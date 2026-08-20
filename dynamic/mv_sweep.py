@@ -53,7 +53,10 @@ def play(job):
     lbl, params, opp, seed, seat = job
     try:
         from planner.simulate import Simulator
-        me = _load(AGENT, params)
+        if isinstance(params, str):          # a file path: load it as-is
+            me = _load(params)
+        else:
+            me = _load(AGENT, params)
         op = _load(os.path.join(ROOT, "opponents", f"{opp}.py"))
         pair = [me, op] if seat == 0 else [op, me]
         sim = Simulator.new_episode(configuration={"episodeSteps": 720}, seed=seed)
@@ -81,15 +84,15 @@ def variants(base):
     W = dict(NURSE_LATE=1, NURSE_CROP="WHEAT")
     # NOTE: the baseline now has NURSE_LATE=1 by default, so the identity
     # control must switch it OFF explicitly rather than leave it unset.
-    # Cumulative: where this session started vs what is now default.
-    START = dict(NURSE_LATE=0, ALLOC_MODE=0, ENPV_VETO=0)
     return [
-        ("session start (base)", V(**START)),
-        ("+ late wheat (hand)", V(ALLOC_MODE=0, ENPV_VETO=0)),
-        ("+ opportunity alloc", V(ENPV_VETO=0)),
-        ("+ enpv veto = SHIPPED", V()),
-        ("shipped, veto L6", V(ENPV_LABOR=6.0)),
-        ("shipped, veto L10", V(ENPV_LABOR=10.0)),
+        ("current best (base)", V()),
+        ("order off (identity)", V(ENPV_ORDER=0)),
+        ("enpv purchase order", V(ENPV_ORDER=1)),
+        ("melon 12", V(TC_MELON=12)),
+        ("melon 12 + order", V(TC_MELON=12, ENPV_ORDER=1)),
+        ("melon 16 + order", V(TC_MELON=16, ENPV_ORDER=1)),
+        ("melon 12, prio .97", V(TC_MELON=12, RP_MELON=0.97)),
+        ("melon 12 prio + order", V(TC_MELON=12, RP_MELON=0.97, ENPV_ORDER=1)),
     ]
 
 

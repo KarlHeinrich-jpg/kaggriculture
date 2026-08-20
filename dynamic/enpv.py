@@ -88,7 +88,8 @@ def feed_cost(n_need, own_available, market_price, own_op_cost=0.0):
 # --------------------------------------------------------------- asset ENPV
 
 def enpv_animal(animal, day, ctx, c_labor=13.0, wheat_price=None,
-                own_wheat=0.0, n_same=0, ration="auto"):
+                own_wheat=0.0, n_same=0, ration="auto", risk_lambda=0.0,
+                death_prob=0.0):
     """ENPV of buying one more `animal` today.
 
         sum_i ( Y_main,i * P_realized + Y_sub,i * P_realized ) - C_buy - sum_i C_feed
@@ -125,6 +126,10 @@ def enpv_animal(animal, day, ctx, c_labor=13.0, wheat_price=None,
             turns -= 0.5 * days_left               # CARE is pointless unfed
         v = (units * px + fert * fert_px - spec["cost"] - cost_feed
              - c_labor * turns)
+        if risk_lambda:
+            var = npv_variance(units, px, ctx.slope_of(product),
+                               ctx.n_them.get(product, 0.0), death_prob)
+            v = risk_adjust(v, var, risk_lambda)
         row = {"ration": r, "units": units, "px": px, "fert_px": fert_px,
                "feed": cost_feed, "turns": turns, "enpv": v}
         if best is None or v > best["enpv"]:
@@ -132,7 +137,8 @@ def enpv_animal(animal, day, ctx, c_labor=13.0, wheat_price=None,
     return best["enpv"], best
 
 
-def enpv_crop(crop, day, ctx, c_labor=13.0, n_pending=0.0):
+def enpv_crop(crop, day, ctx, c_labor=13.0, n_pending=0.0, risk_lambda=0.0,
+              death_prob=0.0):
     """ENPV of planting one more tile of `crop` today.
 
         sum_k Y_k * P_realized(Y_k) - C_seed - sum_i C_ops,i
@@ -146,6 +152,10 @@ def enpv_crop(crop, day, ctx, c_labor=13.0, n_pending=0.0):
     days_left = max(1, SEASON_DAYS - 1 - day)
     px = ctx.realized(crop, units, days_left, prior=n_pending)
     v = units * px - OPP.CROPS[crop]["seed"] - c_labor * turns
+    if risk_lambda:
+        var = npv_variance(units, px, ctx.slope_of(crop),
+                           ctx.n_them.get(crop, 0.0), death_prob)
+        v = risk_adjust(v, var, risk_lambda)
     return v, {"units": units, "px": px, "turns": turns, "done": day_done}
 
 
@@ -171,6 +181,45 @@ def enpv_hand(day, n_hired_today, value_per_turn):
     marginal turn is actually earning, minus its fib-priced wage."""
     wage = hire_cost(n_hired_today)
     return TURNS_PER_DAY * float(value_per_turn) - wage, {"wage": wage}
+
+
+# --------------------------------------------------------- risk adjustment
+
+def npv_variance(units, price, slope, opp_supply, death_prob=0.0,
+                 opp_rel_error=0.5):
+    """Var(NPV) for an asset that will sell `units` at about `price`.
+
+    Two independent sources, both measured rather than posited:
+
+    PRICE. The realised price depends on the opponent's remaining supply, and
+    our estimate of that is biased low by roughly 2.5x with correlation 0.66 to
+    0.82 (`dynamic/opp_state_test.py`). A relative error of ~0.5 on
+    `opp_supply` moves the price by the book's own slope, so
+
+        sigma_P = |P'| * opp_rel_error * opp_supply
+
+    YIELD. A tile can be lost -- two consecutive unwatered nights make a weed,
+    two unfed nights and the animal escapes -- which costs the whole asset:
+
+        sigma_Y = death_prob * units
+
+    The two are independent, so their variances add.
+    """
+    sigma_p = abs(slope) * opp_rel_error * max(0.0, opp_supply)
+    var_price = (units * sigma_p) ** 2
+    var_yield = (death_prob * units * price) ** 2
+    return var_price + var_yield
+
+
+def risk_adjust(enpv, variance, lam):
+    """ENPV_risk = E[NPV] - lambda * Var(NPV).
+
+    Variance is in dollars SQUARED, so lambda carries units of 1/dollars and is
+    small: a $1,000 asset with a $500 standard deviation has Var = 250,000, and
+    a lambda of 1e-4 charges it $25. Values in the 1e-5 to 1e-3 range are the
+    ones worth scanning.
+    """
+    return enpv - float(lam) * float(variance)
 
 
 def roi(enpv, upfront):
