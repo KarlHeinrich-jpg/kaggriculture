@@ -233,3 +233,88 @@ class LinearDailyNet(nn.Module):
                 out.append(f"  {head} -> {lab}:")
                 out.extend(lines)
         return "\n".join(out) or f"  ({head} still at the identity)"
+
+
+class NumpyWhiteBox(PA.Policy):
+    """Both heads, pure numpy, white-box. This is what rollouts and the
+    submission run: no torch, and every coefficient still has a name.
+
+    WHITEBOX=True tells `agent_rl` to feed the 122 named features to the daily
+    head instead of the 4,286-dim vector.
+    """
+
+    WHITEBOX = True
+
+    def __init__(self, dw, sw, names_d, names_s, inter_idx, explore=True, seed=0):
+        import numpy as np
+        self.np = np
+        self.dw = {k: np.ascontiguousarray(v, dtype=np.float32) for k, v in dw.items()}
+        self.sw = {k: np.ascontiguousarray(v, dtype=np.float32) for k, v in sw.items()}
+        self.dh = {k: (np.ascontiguousarray(self.dw[f"heads.{k}.weight"].T),
+                       self.dw[f"heads.{k}.bias"]) for k in PA.DAILY_HEADS}
+        self.dv = (np.ascontiguousarray(self.dw["value.weight"].T), self.dw["value.bias"])
+        self.sh = (np.ascontiguousarray(self.sw["head.weight"].T), self.sw["head.bias"])
+        self.sv = (np.ascontiguousarray(self.sw["value.weight"].T), self.sw["value.bias"])
+        self.names_d, self.names_s, self.idx = names_d, names_s, inter_idx
+        self.explore = explore
+        self.rng = np.random.default_rng(seed)
+        self.traj = {"daily": [], "sell": []}
+
+    def reset(self):
+        self.traj = {"daily": [], "sell": []}
+
+    def _soft(self, z):
+        z = z - z.max(-1, keepdims=True)
+        e = self.np.exp(z)
+        return e / e.sum(-1, keepdims=True)
+
+    def _pick(self, p):
+        if not self.explore:
+            return int(p.argmax())
+        return int(self.rng.choice(len(p), p=p / p.sum()))
+
+    def daily(self, obs_vec):
+        np = self.np
+        x = np.asarray(obs_vec, dtype=np.float32)
+        picks, logp, probs = {}, 0.0, {}
+        for k in PA.DAILY_HEADS:
+            w, b = self.dh[k]
+            p = self._soft(x @ w + b)
+            i = self._pick(p)
+            picks[k] = i
+            probs[k] = p
+            logp += float(np.log(p[i] + 1e-9))
+        w, b = self.dv
+        v = float((x @ w + b)[0])
+        self.traj["daily"].append((obs_vec, picks, logp, v))
+        wq = probs["crop_pref"]
+        return PA.Decision(
+            crop_pref={c: float(wq[i]) * len(PA.CROPS) for i, c in enumerate(PA.CROPS)},
+            crew_delta=PA.CREW_DELTAS[picks["crew_delta"]],
+            buy_land=bool(picks["buy_land"]),
+            animal=PA.ANIMAL_CHOICES[picks["animal"]])
+
+    def sell(self, market_vec, holdings):
+        np = self.np
+        x = np.asarray(market_vec, dtype=np.float32)
+        if self.idx:
+            x = np.concatenate([x, np.array([x[i] * x[j] for i, j in self.idx],
+                                            dtype=np.float32)])
+        w, b = self.sh
+        z = (x @ w + b).reshape(len(PA.PRODUCTS), len(PA.SELL_LEVELS))
+        p = self._soft(z)
+        idx, logp = [], 0.0
+        for i in range(len(PA.PRODUCTS)):
+            j = self._pick(p[i])
+            idx.append(j)
+            logp += float(np.log(p[i, j] + 1e-9))
+        w, b = self.sv
+        v = float((x @ w + b)[0])
+        self.traj["sell"].append((market_vec, idx, logp, v))
+        return {it: PA.SELL_LEVELS[idx[i]] for i, it in enumerate(PA.PRODUCTS)}
+
+
+def whitebox_weights(dnet, snet):
+    d = {k: v.detach().cpu().numpy() for k, v in dnet.state_dict().items()}
+    s = {k: v.detach().cpu().numpy() for k, v in snet.state_dict().items()}
+    return d, s

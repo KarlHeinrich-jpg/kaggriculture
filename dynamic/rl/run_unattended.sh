@@ -15,10 +15,10 @@ PY=/home/yilewang/kagg-env/bin/python
 OUT=logs/rl
 mkdir -p "$OUT"
 
-HOURS="${HOURS:-11}"
+HOURS="${HOURS:-100000}"   # effectively forever; stop with pkill
 EPISODES="${EPISODES:-96}"
 WORKERS="${WORKERS:-26}"
-MAX_RESTARTS="${MAX_RESTARTS:-6}"
+MAX_RESTARTS="${MAX_RESTARTS:-9999}"
 
 echo "=== unattended run started $(date -Is) ===" | tee -a "$OUT/run.log"
 echo "budget ${HOURS}h, ${EPISODES} paired episodes/iter, ${WORKERS} workers" \
@@ -40,11 +40,13 @@ for attempt in $(seq 1 "$MAX_RESTARTS"); do
     echo "--- attempt $attempt, ${LEFT_H}h left $RESUME ---" | tee -a "$OUT/run.log"
 
     "$PY" dynamic/rl/train.py --iters 100000 --episodes "$EPISODES" \
-        --workers "$WORKERS" --hours "$LEFT_H" --self_play 0.6 --kl "${KL:-0.02}" \
+        --workers "$WORKERS" --hours "$LEFT_H" --self_play "${SELF_PLAY:-0.5}" --kl "${KL:-0.02}" \
+        --policy "${POLICY:-linear}" --curriculum "${CURRICULUM:-0.7}" \
         $RESUME >> "$OUT/train.out" 2>&1
     rc=$?
     echo "train.py exited rc=$rc at $(date -Is)" | tee -a "$OUT/run.log"
-    [ "$rc" -eq 0 ] && break
+    # rc 0 means the time budget ran out, which for an indefinite run means the
+    # process ended cleanly and should simply come back.
     sleep 20
 done
 

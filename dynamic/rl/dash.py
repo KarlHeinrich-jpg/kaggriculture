@@ -29,6 +29,10 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path[:] = [q for q in sys.path
+               if os.path.abspath(q or ".") != os.path.dirname(
+                   os.path.abspath(__file__))]
+sys.path.insert(0, ROOT)
 LOGDIR = os.path.join(ROOT, "logs", "rl")
 LOG = os.path.join(LOGDIR, "train.out")
 
@@ -94,6 +98,34 @@ def verdict(t):
     if tv < -2:
         return f"{C['red']}DOWN {d:+8.1f}  t {tv:+5.2f}{C['r']}"
     return f"{C['y']}flat {d:+8.1f}  t {tv:+5.2f}{C['r']}"
+
+
+def _rules_block(max_lines=14):
+    """Read the live checkpoint and print the policy as text.
+
+    This is what a white-box run buys: the coefficients ARE the strategy, so
+    training can be watched as rules appearing rather than as a loss curve.
+    """
+    ck = os.path.join(LOGDIR, "latest.pt")
+    if not os.path.exists(ck):
+        return f"    {C['dim']}(no checkpoint yet){C['r']}"
+    try:
+        import torch
+        from dynamic.rl.linear_policy import (DEFAULT_INTERACTIONS,
+                                              LinearDailyNet, LinearSellNet)
+        d = torch.load(ck, map_location="cpu", weights_only=False)
+        dn, sn = LinearDailyNet(), LinearSellNet(interactions=DEFAULT_INTERACTIONS)
+        dn.load_state_dict(d["daily"])
+        sn.load_state_dict(d["sell"])
+    except Exception as e:                       # an MLP checkpoint, or mid-write
+        return f"    {C['dim']}(not a white-box checkpoint: {type(e).__name__}){C['r']}"
+    txt = (dn.explain("crop_pref", top=3, min_abs=0.02) + "\n"
+           + dn.explain("crew_delta", top=2, min_abs=0.02) + "\n"
+           + sn.rules(top=2, min_abs=0.08))
+    lines = [l for l in txt.split("\n") if l.strip()][:max_lines]
+    if not lines:
+        return f"    {C['dim']}(still at the scheduler identity -- nothing learned yet){C['r']}"
+    return "\n".join("  " + l for l in lines)
 
 
 def render():
@@ -163,6 +195,11 @@ def render():
         A(f"    {C['dim']}self-play near 50% and p_id {pid:.3f}: drifting without a "
           f"clear direction yet.{C['r']}")
     A("")
+    # --- the policy as rules, which is the point of a white-box run
+    A(f"  {C['b']}rules the policy has learned{C['r']}   "
+      f"{C['dim']}(from logs/rl/latest.pt){C['r']}")
+    A(_rules_block())
+    A("")
     A(f"  {C['dim']}* 'now' is a single 96-episode iteration (se ~5pp) -- read "
       f"mean50, not now.{C['r']}")
     A(f"  {C['dim']}baseline to beat: SHIPPED tape+market is +80,210 paired above "
@@ -172,6 +209,10 @@ def render():
 
 
 def main():
+    if "--plain" in sys.argv:
+        for k in C:
+            C[k] = ""
+        sys.argv = [a for a in sys.argv if a != "--plain"]
     every = float(sys.argv[1]) if len(sys.argv) > 1 else 20.0
     if every <= 0:
         print(render())

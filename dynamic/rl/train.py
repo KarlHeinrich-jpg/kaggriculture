@@ -64,6 +64,9 @@ import torch.nn.functional as F                     # noqa: E402
 from dynamic.rl import policy_api as PA             # noqa: E402
 from dynamic.rl.net import (DailyNet, SellNet, NumpyPolicy, export_numpy,     # noqa: E402
                             n_params, to_numpy_weights)
+from dynamic.rl.linear_policy import (DEFAULT_INTERACTIONS,                   # noqa: E402
+                                      LinearDailyNet, LinearSellNet,
+                                      NumpyWhiteBox, whitebox_weights)
 
 AGENT = os.path.join(ROOT, "dynamic", "rl", "agent_rl.py")
 CKPT_DIR = os.path.join(ROOT, "logs", "rl")
@@ -109,20 +112,34 @@ def _load_opp(name):
 
 
 _W = {}
+_RUNGDIR = os.path.join(ROOT, "opponents", "rungs")
+LADDER = ([os.path.join("rungs", f[:-3]) for f in
+           sorted(os.listdir(_RUNGDIR), reverse=True)
+           if f.startswith("rung_") and f.endswith(".py")]
+          if os.path.isdir(_RUNGDIR) else [])
 
 
-def _worker_init(weights, snapshot):
+def _worker_init(weights, snapshot, kind="mlp"):
     # Workers run the NUMPY forward, not torch: measured 1,917 us against 25 us
     # for a SellNet call, because torch pays a Python dispatch and a kernel
     # launch per op on 128-element tensors. Over a game that is 2.72 s against
     # 1.87 s, and it is the same code path the submission has to use anyway.
     _W["weights"] = weights
     _W["snapshot"] = snapshot
+    _W["kind"] = kind
     _W["genome"] = _base_genome()
 
 
 # Workers re-import this module; torch's intra-op pool must be 1 there too.
 torch.set_num_threads(1)
+
+def _mkpol(weights, seed):
+    """One policy object from whatever the run is training."""
+    if _W.get("kind") == "linear":
+        dw, sw, nd, ns, idx = weights
+        return NumpyWhiteBox(dw, sw, nd, ns, idx, explore=True, seed=seed)
+    return NumpyPolicy(weights, explore=True, seed=seed)
+
 
 def rollout(job):
     """One PAIRED episode: the same seed from both seats. Returns the two
@@ -134,12 +151,11 @@ def rollout(job):
     shapes = []
     try:
         for seat in (0, 1):
-            pol = NumpyPolicy(_W["weights"], explore=True,
-                              seed=(seed * 7 + seat * 13 + wid) & 0x7fffffff)
+            pol = _mkpol(_W["weights"], (seed * 7 + seat * 13 + wid) & 0x7fffffff)
             me = _load_agent(_W["genome"], pol, f"rl_{os.getpid()}_{seat}")
             if opp_name == "__self__":
-                opp_pol = NumpyPolicy(_W["snapshot"], explore=True,
-                                      seed=(seed * 11 + seat * 17 + wid) & 0x7fffffff)
+                opp_pol = _mkpol(_W["snapshot"],
+                                 (seed * 11 + seat * 17 + wid) & 0x7fffffff)
                 op = _load_agent(_W["genome"], opp_pol, f"rlopp_{os.getpid()}_{seat}")
             else:
                 op = _load_opp(opp_name)
@@ -336,6 +352,12 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--hours", type=float, default=48.0)
     ap.add_argument("--ent", type=float, default=0.001)
+    ap.add_argument("--curriculum", type=float, default=0.7,
+                    help="share of non-self-play episodes drawn from the rung ladder")
+    ap.add_argument("--advance_at", type=float, default=60.0,
+                    help="pool win rate over --smooth iters that promotes a rung")
+    ap.add_argument("--policy", choices=("mlp", "linear"), default="linear",
+                    help="linear = white-box: every coefficient is a named rule")
     ap.add_argument("--save_every", type=int, default=20)
     ap.add_argument("--smooth", type=int, default=10)
     ap.add_argument("--resume", action="store_true")
@@ -349,8 +371,17 @@ def main():
     args = ap.parse_args()
 
     os.makedirs(CKPT_DIR, exist_ok=True)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dnet, snet = DailyNet().to(device), SellNet().to(device)
+    # A 6,259-coefficient policy belongs on the CPU. The update is a handful of
+    # small matmuls and a GPU kernel launch costs more than the arithmetic --
+    # the same effect that made torch 77x slower than numpy for these nets.
+    # The MLP is large enough for the GPU to pay; the white-box one is not.
+    device = ("cpu" if args.policy == "linear"
+              else ("cuda" if torch.cuda.is_available() else "cpu"))
+    if args.policy == "linear":
+        dnet, snet = LinearDailyNet(), LinearSellNet(interactions=DEFAULT_INTERACTIONS)
+    else:
+        dnet, snet = DailyNet(), SellNet()
+    dnet, snet = dnet.to(device), snet.to(device)
     opt = torch.optim.Adam(list(dnet.parameters()) + list(snet.parameters()),
                            lr=args.lr)
     print(f"params {n_params(dnet, snet):,}  device {device}  "
@@ -362,6 +393,7 @@ def main():
     log = open(os.path.join(CKPT_DIR, "train.log"), "a")
     best = -9e9
     recent = []
+    rung, pool_hist = [0], []
     snapshots = []
     # Frozen copy of the identity init: the prior the KL term pulls back to.
     import copy as _copy
@@ -383,21 +415,38 @@ def main():
         if time.time() - t0 > args.hours * 3600:
             print("time budget reached", flush=True)
             break
-        weights = to_numpy_weights(dnet, snet)
+        if args.policy == "linear":
+            _dw, _sw = whitebox_weights(dnet, snet)
+            weights = (_dw, _sw, dnet.names, snet.names, snet.idx)
+        else:
+            weights = to_numpy_weights(dnet, snet)
         # A frozen self from a few iterations back. Refreshed on a delay so the
         # opponent is a fixed target within an iteration rather than a moving
         # one, which is what keeps self-play from chasing its own tail.
         if it % args.snapshot_every == 0 or not snapshots:
-            snapshots.append({k: v.copy() for k, v in weights.items()})
+            import copy as _cp
+            snapshots.append(_cp.deepcopy(weights))
             del snapshots[:-args.snapshot_keep]
         snapshot = snapshots[rng.randrange(len(snapshots))]
         def _pick_opp():
-            return "__self__" if rng.random() < args.self_play else rng.choice(POOL)
+            # CURRICULUM. Grading every agent on disk found 115 of 117 beating us
+            # 95%+ of the time and exactly TWO in the 20-80% band, so the ladder
+            # has no bottom and one had to be built: handicap.py wraps a strong
+            # agent in action dropout, which is smooth and monotone in eps and
+            # keeps the SHAPE of competent play at every rung.
+            #
+            # The rung advances on the POOL win rate, not the blended one -- the
+            # self-play share is what made a blended number unreadable.
+            if rng.random() < args.self_play:
+                return "__self__"
+            if LADDER and rng.random() < args.curriculum:
+                return LADDER[min(rung[0], len(LADDER) - 1)]
+            return rng.choice(POOL)
         jobs = [(rng.randrange(10 ** 6, 2 ** 31 - 1), _pick_opp(), w)
                 for w in range(args.episodes)]
         with mp.get_context("forkserver").Pool(
                 args.workers, initializer=_worker_init,
-                initargs=(weights, snapshot)) as pool:
+                initargs=(weights, snapshot, args.policy)) as pool:
             res = pool.map(rollout, jobs, chunksize=1)
         errs = [e for _, e in res if e]
         good = [r for r, e in res if e is None]
@@ -436,6 +485,7 @@ def main():
         line = (f"iter {it:>5} winrate {wr:>5.1f}%  paired {statistics.mean(paireds):>+9,.0f}  "
                 f"reward {statistics.mean(rewards):>+5.2f}  "
                 f"selfwr {sp_wr:>5.1f}%  poolwr {pool_wr:>5.1f}%  "
+                f"rung {rung[0]}  "
                 f"p_id {stats['p_identity'] / max(1, stats['n_id']):.3f}  "
                 f"samples d{len(batches['daily']):,}/s{len(batches['sell']):,}  "
                 f"{len(errs)} err  {time.time()-t0:.0f}s")
@@ -445,6 +495,21 @@ def main():
         # BEST IS ON A MOVING AVERAGE, not a single iteration. Win rate over 96
         # paired episodes has se ~5pp, so scoring on one iteration locks 'best'
         # onto whichever early iteration got lucky and then never beats it.
+        # promote when the current rung is comfortably beaten, demote if buried
+        if pool_wr == pool_wr:
+            pool_hist.append(pool_wr)
+            del pool_hist[:-args.smooth]
+        if len(pool_hist) >= args.smooth:
+            m = statistics.mean(pool_hist)
+            if m >= args.advance_at and rung[0] < len(LADDER) - 1:
+                rung[0] += 1
+                pool_hist.clear()
+                print(f"  -> promoted to rung {rung[0]} "
+                      f"({os.path.basename(LADDER[rung[0]])})", flush=True)
+            elif m < 10.0 and rung[0] > 0:
+                rung[0] -= 1
+                pool_hist.clear()
+                print(f"  -> demoted to rung {rung[0]}", flush=True)
         recent.append(wr)
         del recent[:-args.smooth]
         smooth = statistics.mean(recent)
