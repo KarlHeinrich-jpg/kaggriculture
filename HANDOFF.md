@@ -1109,3 +1109,95 @@ day 15 while the tape is at $10.3k by day 12, so the extra tiles are planted and
 then die unwatered (19 tiles on day 3 down to 9 on day 6). More tiles without
 the cash to crew them is strictly worse, which is the sixth independent
 confirmation of that.
+
+---
+
+## 23. Opportunity cost as a module, so the windows find themselves (2026-08-20)
+
+Section 22a's late-wheat refill was found by hand. It is one instance of a rule:
+
+    V_task = V_self + V_suppress - V_opportunity
+    V_opportunity(tile, t) = max over feasible c of E[Profit(c, tile, t)]
+
+After day 19 nothing but WHEAT and CARROT can still be planted, so the feasible
+set collapses to one useful element, `V_opportunity` goes to 0, and any
+positive-profit crop should be planted automatically. `dynamic/opportunity.py`
+computes the feasible set and each member's profit, so windows of that shape
+fall out of the arithmetic instead of being noticed.
+
+### E[Profit] is exact, and the two yield rules are different
+
+Both had been misread earlier in this project, so they are now written down:
+
+- **NON-ONGOING (WHEAT, CARROT, MELON).** `_new_plant` seeds `yield_units = 1`
+  and the nightly refresh SKIPS them entirely. Yield comes from WATER, and only
+  inside `[(max_yield_day+1)//2, max_yield_day]` (engine line 438-443). WHEAT
+  therefore makes 1 + 3 = **4 units for 6 unit-turns**; MELON makes 6 by age 10.
+  HARVEST then DELETES the plant, which is what lets it cycle a tile.
+- **ONGOING (STRAWBERRY, TOMATO).** `production_count > max_yield` stops accrual
+  permanently (engine line 796), so `max_yield` is a **LIFETIME cap**.
+  STRAWBERRY produces exactly 4 units, at ages 10/12/14/16. That is the
+  arithmetic behind deferral measuring -10,029 to -32,276 in section 22a: every
+  day held back is a yield never taken, not a yield delayed.
+
+### It reproduces the hand-found window and beats it
+
+`ALLOC_MODE=1` keeps a tile's searched role while that role is feasible and
+profitable, and otherwise plants the best thing that still is. Paired margin
+against the 6-agent pool, four disjoint seed sets, all against the same static
+base (`NURSE_LATE=0, ALLOC_MODE=0`):
+
+| seeds | n | hand-coded late wheat | alloc1 L13 | alloc1 L15 |
+|---|---|---|---|---|
+| 31337 | 240 | +2,311 (t=8.9) | — | **+2,938** (t=8.4) |
+| 606060 | 288 | +2,363 (t=8.7) | **+3,020** (t=10.7) | +2,872 (t=10.5) |
+| 818181 | 288 | +1,863 (t=7.6) | — | **+2,545** (t=7.6) |
+| 246810 | 288 | +2,229 (t=9.4) | **+2,631** (t=8.7) | +2,449 (t=8.0) |
+
+The allocator beats the hand-written rule by +500 to +680 on every set, at
+82% paired wins on the largest. `ALLOC_LABOR` is a **plateau over 13-17**, not a
+spike, with a cliff at 20 (-11,684) where strawberry's profit turns negative and
+the fallback abandons it everywhere. Shipped at 13.
+
+**`ALLOC_MODE=2` (always plant the argmax) is -53,163.** The searched static
+layout carries real information about WHERE a role belongs that a per-tile
+profit comparison does not have; the allocator is only allowed to act where the
+static answer has expired.
+
+### What it found on its own
+
+Instrumented over 3 seeds, substitutions of (searched role -> chosen crop):
+
+    MELON      -> WHEAT   days 20-27      the hand-found window
+    STRAWBERRY -> WHEAT   days 20-25      the same window, other tiles
+    STRAWBERRY -> MELON   days 18-19      NEW -- nobody had looked here
+    anything   -> None    days 28-29      correctly stops planting
+
+### A candidate the formula proposed and the engine rejected
+
+`_last_plant_day` keys on `max_yield_day`, but HARVEST is gated on
+`first_yield_day` (engine line 457) -- `max_yield_day` only bounds accrual. The
+true bound is later: **MELON 17 -> 19** (still its full 6 units, since the
+accrual window shuts at age 10 anyway) and **WHEAT 25 -> 27** (2 units, ~$100,
+on a $10 seed). Both have positive gross profit, and the STRAWBERRY -> MELON
+window above needs them.
+
+Measured: **-1,546 (t=-7.0) on its own, -1,656 with the allocator, -2,085 with
+the hand-coded refill.** So the flat $/unit-turn labour price understates a LATE
+planting: it waters every day until harvest against a crew that is winding down,
+and it finishes inside the terminal liquidation window where the turns are
+wanted for selling. Kept reachable as `TRUE_LAST_PLANT_DAY`, defaulted off.
+
+This is the formula-and-experiment loop behaving correctly. The module proposed
+three windows; the engine kept one, and the one it kept is worth more than the
+hand-written version of it.
+
+### Shipped defaults in `dynamic/agent2.py`
+
+    ALLOC_MODE = 1        ALLOC_LABOR = 13.0        TRUE_LAST_PLANT_DAY = 0
+    NURSE_LATE = 1        NURSE_CROP = "WHEAT"      (both bypassed while ALLOC_MODE is on,
+                                                     and worth +2,229 if it is turned off)
+
+`ECON_VALUE` remains exactly inert alongside all of this (+2,449 with and
+without), as section 22 predicted: nothing is ever dropped, so the thing that
+decides what to drop cannot matter.

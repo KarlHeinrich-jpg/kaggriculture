@@ -61,6 +61,7 @@ from dynamic.router2 import task_value as _task_value2  # noqa: E402
 from dynamic import market_model as MM  # noqa: E402
 from dynamic.opp_state import OppState  # noqa: E402
 from dynamic import task_value as TV  # noqa: E402
+from dynamic import opportunity as OPP  # noqa: E402
 
 # ------------------------------------------------------------ engine mirrors
 
@@ -328,6 +329,47 @@ DEFER_MELON = 0
 NURSE_CROP = "WHEAT"    # "" = leave a deferred tile empty; "WHEAT" = cycle it
 NURSE_UNTIL_DAY = 0
 NURSE_LATE = 1          # 1 = refill tiles whose own role is past its last day
+
+# OPPORTUNITY-COST ALLOCATION (dynamic/opportunity.py). NURSE_LATE above is a
+# hand-found instance of one rule:
+#
+#     V_task = V_self + V_suppress - V_opportunity
+#     V_opportunity(tile, t) = max over feasible c of E[Profit(c, tile, t)]
+#
+# After day 19 nothing but WHEAT and CARROT can still be planted, so the
+# feasible set collapses, V_opportunity goes to 0, and any positive-profit crop
+# should be planted automatically. Hand-finding those windows does not scale;
+# this computes the feasible set and each member's profit instead, and the same
+# arithmetic immediately turned up two more that nobody had looked for --
+# `_last_plant_day` below is keyed on max_yield_day where the engine's binding
+# constraint is first_yield_day, so it refuses MELON from day 18 (it still makes
+# its full 6 units through day 19) and WHEAT from day 26 (2 units, $100, on a
+# $10 seed).
+#
+#   0  off; the static layout decides, as searched
+#   1  fall back: keep the tile's searched role while it is feasible and
+#      profitable, otherwise plant the best thing that still is. This is the
+#      general form of NURSE_LATE and should reproduce it.
+#   2  full: plant the argmax whenever it beats the searched role.
+ALLOC_MODE = 1
+ALLOC_LABOR = 13.0      # $/unit-turn at the margin; flat plateau over 13-17
+
+# `_last_plant_day` below keys on max_yield_day, but the engine's binding
+# constraint on HARVEST is first_yield_day -- max_yield_day only bounds how much
+# accrues. The gap refuses plantings that would still pay:
+#   MELON  17 -> 19 (still its full 6 units: the accrual window shuts at age 10)
+#   WHEAT  25 -> 27 (2 units, ~$100, on a $10 seed and four unit-turns)
+# The allocator IDENTIFIES those windows and the old bound then filters them out
+# downstream, so this switch is what lets them actually be planted.
+#
+# MEASURED AND REFUTED: -1,546 (t=-7.0, n=288) on its own, -1,656 with the
+# allocator, -2,085 with the hand-coded refill. Both windows have positive GROSS
+# profit under `opportunity.expected_profit` and negative NET value in the game,
+# so the flat $/unit-turn labour price understates what a late planting really
+# costs -- it waters every day until harvest against a crew that is winding
+# down, and it finishes inside the terminal liquidation window. Left off, and
+# left reachable so the next person does not re-derive it.
+TRUE_LAST_PLANT_DAY = 0
 OPP_MODEL = 1
 OPP_SCALE_LO = 0.65
 OPP_SCALE_HI = 1.30
@@ -362,7 +404,7 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "MV_POSTURE", "MV_METER_MULT", "MV_PANIC_ORDER",
                 "ECON_VALUE", "ECON_ALPHA", "ECON_LAMBDA",
                 "DEFER_STRAWBERRY", "DEFER_MELON", "NURSE_CROP", "NURSE_UNTIL_DAY",
-                "NURSE_LATE")
+                "NURSE_LATE", "ALLOC_MODE", "ALLOC_LABOR", "TRUE_LAST_PLANT_DAY")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -413,7 +455,8 @@ def _reset_state():
     S.update({"layout": None, "day": -1, "tours": {}, "progress": {},
               "target_units": 1, "bought": {a: 0 for a in ANIMALS},
               "pending": [], "idle_target": {},
-              "opp": OpponentModel(), "oppst": OppState(), "last_sales": {}})
+              "opp": OpponentModel(), "oppst": OppState(), "last_sales": {},
+              "alloc": {}})
 
 
 _reset_state()
@@ -509,9 +552,14 @@ def _unlocked(farm, tile):
 # --------------------------------------------------------------- task build
 
 def _last_plant_day(crop):
-    """Latest day a fresh planting still returns something before day 29."""
+    """Latest day a fresh planting still returns something before day 29.
+
+    HARVEST is gated on `first_yield_day` for both crop kinds (engine line 457);
+    `max_yield_day` only bounds accrual, so using it here refuses plantings that
+    would still return units. See TRUE_LAST_PLANT_DAY.
+    """
     cd = CROPS[crop]
-    if cd["ongoing"]:
+    if TRUE_LAST_PLANT_DAY or cd["ongoing"]:
         return SEASON_DAYS - 1 - cd["first_yield_day"]
     return SEASON_DAYS - 1 - cd["max_yield_day"]
 
@@ -955,6 +1003,37 @@ def _ramp(day):
     return max(0.0, 1.0 - (day - RAMP_START_DAY) / span)
 
 
+def _alloc_role(role, day):
+    """Opportunity-cost choice of crop for an EMPTY tile, or None.
+
+    Cached per (role, day): the answer depends only on the day's market, which
+    is fixed once `S["econ"]` is built for the morning.
+    """
+    ctx = S.get("econ")
+    if ctx is None:
+        return role
+    key = (role, day)
+    if key in S["alloc"]:
+        return S["alloc"][key]
+
+    def price_of(crop):
+        return ctx.unit_price(crop)
+
+    static = 0.0
+    if role in OPP.CROPS and day <= OPP.last_plant_day(role):
+        static = OPP.expected_profit(role, day, price_of(role), ALLOC_LABOR)
+    if ALLOC_MODE == 1 and static > 0.0:
+        out = role
+    else:
+        cand, profit = OPP.best(day, price_of, ALLOC_LABOR)
+        if static > 0.0 and profit <= static:
+            out = role
+        else:
+            out = cand
+    S["alloc"][key] = out
+    return out
+
+
 def _effective_role(role, day):
     """The role this EMPTY tile should be planted with today.
 
@@ -963,6 +1042,8 @@ def _effective_role(role, day):
     """
     if role in ANIMALS:
         return role
+    if ALLOC_MODE:
+        return _alloc_role(role, day)
     start = 0
     if role == "STRAWBERRY":
         start = int(DEFER_STRAWBERRY)
@@ -1307,7 +1388,7 @@ def agent(obs):
         S["layout"] = (_plan_layout(board_size, S["plan"]) if S["plan"]
                        else _build_layout(board_size))
 
-    if ECON_VALUE:
+    if ECON_VALUE or ALLOC_MODE:
         # Built before the day is planned, from the market as it stands this
         # morning. N_them is what the opponent can still put on each book and
         # N_us is our own remaining supply, measured the same way so the bias in
@@ -1320,6 +1401,7 @@ def agent(obs):
             n_us[it] = _mv_own_supply(farm, private, it, day)
             n_them[it] = _mv_supply(opp, it, day) if opp is not None else 0.0
         S["econ"] = TV.Ctx(inv, shops, day, n_us, n_them, alpha=ECON_ALPHA)
+        S["alloc"] = {}
 
     if S["day"] != day:
         S["day"] = day
@@ -1341,13 +1423,13 @@ def agent(obs):
     shops = tuple(town.get("unlocked_shops") or ())
     opp_farm = farms[1 - player] if len(farms) > 1 else None
     inventory = market_obj.get("inventory") or {}
-    if OPP_MODEL or MV_MARKET or ECON_VALUE:
+    if OPP_MODEL or MV_MARKET or ECON_VALUE or ALLOC_MODE:
         # Our own realised sales are within a unit or two of what we requested:
         # we only ever ask for exactly what the shed holds, so the per-unit
         # commit loop fills the order.
         S["opp"].observe(inventory, day * 24 + hour, shops,
                          S.get("last_sales") or {})
-    if (MV_MARKET or ECON_VALUE) and opp_farm is not None:
+    if (MV_MARKET or ECON_VALUE or ALLOC_MODE) and opp_farm is not None:
         # Must run EVERY turn: the harvest measurement is an intra-day drop in
         # the opponent's tile yield_units, and a skipped turn merges a harvest
         # into a night refresh and loses it.
