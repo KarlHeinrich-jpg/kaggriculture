@@ -1559,3 +1559,72 @@ checkpoint at a real sample size.
 **Also: do not edit `dynamic/search3.py` while it runs**, not just the agent.
 The pool is recreated every generation with the forkserver context, so newly
 spawned workers re-import the main module and would pick up a mid-run edit.
+
+---
+
+## 29. Paired win rate beats paired margin as an evaluation metric (2026-08-20)
+
+Measured head to head on variants of KNOWN effect size
+(`dynamic/metric_test.py`, 40 seeds x 6 opponents x both seats, n=240 paired):
+
+| variant | margin | t | win rate | t |
+|---|---|---|---|---|
+| exact null (identity) | +0 | **0.00** | 50.0% | **0.00** |
+| late wheat off | -8,172 | -8.23 | 22.5% | **-8.52** |
+| veto off | -4,931 | -4.79 | 32.7% | **-4.93** |
+| alloc off | -5,620 | -5.60 | 26.7% | **-7.23** (+29%) |
+| ENPV_LABOR=20 (known bad) | -4,154 | -2.73 | 37.1% | **-3.96** (+45%) |
+
+The win rate is more sensitive on every real effect and still returns exactly
+zero on the null. **The advantage grows with how noisy the margin is**, because
+margin variance is carried by a few blow-out games while a win rate caps each
+seed at +-1. Small-perturbation changes gain only 4%; noisy ones gain 29-45%.
+
+**Genome-level comparisons are the noisiest case there is** (sd ~32,500 per
+paired game against ~4,200 for a small additive change), so this is worth most
+exactly where the GA operates. `dynamic/search3.py` now scores in percentage
+points above 50.
+
+**HANDOFF rule 1 still stands and is not violated by this.** Raw win rate is
+invalid -- seat asymmetry gives a byte-identical mirror 15% at seat 0. What is
+used here is a PAIRED win rate against a reference on the same seed, and a true
+mirror scores margin exactly 0 on every seed, so it TIES rather than losing.
+Ties are excluded from the rate (standard sign test) and reported, and the smoke
+test confirms the reference against itself returns +0.0pp at 0-0.
+
+## 30. Zero-drag cash: refuted three times, and the idle cash is not a defect
+
+From day 12 the agent holds a mean of $22,900 idle, ends at $49,562, and leaves
+FIFTY TILES LOCKED. The land guard is circular -- `wanted` needs a role in a
+quadrant we have not bought, and no role is assigned to a quadrant we do not
+own -- so the third quadrant is never purchased however much cash accumulates.
+
+Three independent implementations of the zero-drag policy, all negative:
+
+| version | fix attempted | result |
+|---|---|---|
+| v1 | as specified | -37,683 |
+| v2 | price each new tile against the ones just added | -36,592 |
+| v3 | gate on the DAY (d14 / d17 / d20) | -27,835 / -19,387 / **-18,143** |
+| any | **land purchase disabled** | **+25 to +1,423 (t~0)** |
+
+The separation variant is the whole story: **buying the quadrant is the
+negative, not the extra tiles.** Three hypotheses tested and refuted along the
+way -- it is not distance (the shed is central, all four quadrants average 4.00
+and 12 workers serve all 75 tiles with 0 dropped), not endogenous pricing (fixed
+in v2, no change), and not ramp timing (d20 still -18,143).
+
+The mechanism, from a direct trace: the expansion WORKS mechanically -- live
+tiles go 43 -> 69 -- and nothing dies unwatered (`consecutive_unwatered` stays
+0). But both banks fall, ours 49,562 -> 32,129 and theirs 75,249 -> 58,743. The
+new tiles are planted around day 20 and mostly cannot yield before the buzzer
+(`yield_plan` gives melon 0 units from day 20), so they crash the shared price
+level and consume crew turns while returning almost nothing.
+
+**And the land cost is never charged.** `enpv.enpv_land` exists and was never
+wired into the expansion: it buys a $2,000-4,000 quadrant to gain 25 tiles worth
+about $112 each at day 20. That is the arithmetic, and it is negative.
+
+**Conclusion: the $22,900 of idle cash is a correct valuation, not a defect.**
+There is nothing left worth buying with it. Do not re-attempt land expansion
+without first passing `enpv_land`.

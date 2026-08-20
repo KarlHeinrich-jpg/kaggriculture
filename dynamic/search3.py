@@ -13,7 +13,34 @@ improved in isolation. A hand fix cannot escape that; a search can, because it
 re-adapts every parameter at once. So OPP_PREDICT, MT_TIMING, MT_QUEUE and
 OPP_DUMP_VETO all go into the genome and the search decides.
 
-FITNESS IS A CRN DIFFERENCE, NOT A RAW MARGIN. The first run of this search
+FITNESS IS A PAIRED WIN RATE, NOT A MARGIN.
+
+Measured head to head on variants of KNOWN effect size (dynamic/metric_test.py,
+40 seeds x 6 opponents x both seats), |t| under each metric:
+
+    variant                 t(margin)   t(win rate)
+    exact null                  0.00         0.00     both correct
+    late wheat off             -8.23        -8.52
+    veto off                   -4.79        -4.93
+    alloc off                  -5.60        -7.23     +29%
+    ENPV_LABOR=20              -2.73        -3.96     +45%
+
+The win rate is more sensitive on every real effect and still returns exactly
+zero on the null. The advantage grows with how noisy the margin is, because
+margin variance is carried by a few blow-out games while a win rate caps every
+seed at +-1 -- and genome-level comparisons are the noisiest case there is
+(sd ~32,500 per paired game), which is exactly where this search operates.
+
+It is only valid PAIRED. Raw win rate is invalid here -- HANDOFF rule 1, seat
+asymmetry gives a byte-identical mirror 15% at seat 0 -- but comparing against
+the reference on the SAME seed is immune: a true mirror scores margin exactly 0
+on every seed, so it ties rather than losing. Ties are excluded from the rate,
+the standard sign-test treatment, and reported.
+
+Fitness is reported in PERCENTAGE POINTS above 50, so +5.0 means the genome
+beats the shipped reference on 55% of the paired seeds it does not tie.
+
+THE UNDERLYING COMPARISON IS STILL A CRN DIFFERENCE. The first run of this search
 scored each genome by its mean paired margin, and its champion -- checkpointed
 at "-48,821" -- re-measured at +1,405 (t=0.8, 149/288 paired wins) against the
 hand-tuned default. The whole apparent gain was the upward bias of taking a
@@ -217,9 +244,13 @@ def main():
     ap.add_argument("--hours", type=float, default=9.0)
     args = ap.parse_args()
 
-    prev = os.path.join(ROOT, "dynamic", "best_genome2.json")
-    src = prev if os.path.exists(prev) else os.path.join(
-        ROOT, "dynamic", "best_genome.json")
+    # Carry forward the best checkpoint available, newest first.
+    src = None
+    for cand in ("best_genome3.json", "best_genome2.json", "best_genome.json"):
+        path = os.path.join(ROOT, "dynamic", cand)
+        if os.path.exists(path):
+            src = path
+            break
     seed_genome = json.load(open(src))["genome"]
     base = to_params(dict(seed_genome)) if "TC_COW" not in seed_genome or True else dict(seed_genome)
     base["SCHEDULE_DRIVEN"] = 0
@@ -232,7 +263,7 @@ def main():
     # The reference is the configuration this session shipped. Fitness is
     # measured against it, so 0 means "no better than what we already have".
     REF = dict(base)
-    best, best_fit, stale = dict(base), 0.0, 0
+    best, best_fit, stale = dict(base), 0.0, 0   # fitness is pp above 50
     t0 = time.time()
     with open(os.path.join(LOG_DIR, "search.log"), "w") as f:
         f.write("")
@@ -259,13 +290,23 @@ def main():
         if not ref_map:
             print("reference genome errored; cannot difference", flush=True)
             break
+        def winrate(m):
+            """Percentage points above 50 on the seeds this genome does not tie
+            the reference on. None when every seed ties (it IS the reference)."""
+            diffs = [m[k] - ref_map[k] for k in m if k in ref_map]
+            w = sum(1 for x in diffs if x > 0)
+            l = sum(1 for x in diffs if x < 0)
+            if w + l == 0:
+                return 0.0 if diffs else None
+            return 100.0 * (w / float(w + l) - 0.5)
+
         scored = []
         for gid, m in by_gid.items():
             if gid == 0:
                 continue
-            shared = [m[k] - ref_map[k] for k in m if k in ref_map]
-            if shared:
-                scored.append((statistics.mean(shared), gid - 1))
+            wr = winrate(m)
+            if wr is not None:
+                scored.append((wr, gid - 1))
         scored.sort(reverse=True)
         ref_abs = statistics.mean(ref_map.values())
         if not scored:
@@ -289,22 +330,31 @@ def main():
                 cby.setdefault(cgid, {})[(opp, sd)] = sum(v)
         cref, ccand = cby.get(0) or {}, cby.get(1) or {}
         shared = [ccand[k] - cref[k] for k in ccand if k in cref]
-        confirmed = statistics.mean(shared) if shared else -1e18
-        cse = (statistics.pstdev(shared) / (len(shared) ** 0.5)) if len(shared) > 1 else 0.0
+        cw = sum(1 for x in shared if x > 0)
+        cl = sum(1 for x in shared if x < 0)
+        if cw + cl:
+            confirmed = 100.0 * (cw / float(cw + cl) - 0.5)
+            cse = 100.0 * (0.25 / (cw + cl)) ** 0.5
+        elif shared:
+            confirmed, cse = 0.0, 0.0          # ties everything: it IS the ref
+        else:
+            confirmed, cse = -1e18, 0.0
+        cmargin = statistics.mean(shared) if shared else 0.0
 
         improved = confirmed > best_fit + 1.0
         if improved:
             best_fit, best, stale = confirmed, cand, 0
-            json.dump({"genome": best, "fitness": best_fit,
-                       "fitness_se": cse, "n_confirm_paired": len(shared),
-                       "in_generation": gbest, "gen": gen},
+            json.dump({"genome": best, "fitness_winrate_pp": best_fit,
+                       "fitness_se_pp": cse, "confirm_margin": cmargin,
+                       "confirm_W_L": [cw, cl], "n_confirm_paired": len(shared),
+                       "in_generation_pp": gbest, "gen": gen},
                       open(CKPT, "w"), indent=1)
         else:
             stale += 1
-        line = (f"gen {gen:>4} in-gen {gbest:>+10,.0f}  confirmed "
-                f"{confirmed:>+10,.0f} (se {cse:>6,.0f}, n={len(shared)})  "
-                f"best {best_fit:>+10,.0f}  median "
-                f"{statistics.median(s for s, _ in scored):>+10,.0f}  "
+        line = (f"gen {gen:>4} in-gen {gbest:>+6.1f}pp  confirmed "
+                f"{confirmed:>+6.1f}pp (se {cse:>4.1f}, {cw}-{cl}, "
+                f"margin {cmargin:>+9,.0f})  best {best_fit:>+6.1f}pp  "
+                f"median {statistics.median(s for s, _ in scored):>+6.1f}pp  "
                 f"stale {stale}  {time.time()-t0:.0f}s")
         print(line, flush=True)
         with open(os.path.join(LOG_DIR, "search.log"), "a") as f:
@@ -312,8 +362,8 @@ def main():
         with open(PROGRESS, "w") as f:
             f.write(f"# dynamic/ GA progress\n\n{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                     f"- generation {gen}/{args.generations}, {(time.time()-t0)/3600:.2f}h\n"
-                    f"- best CRN-differenced margin vs the shipped default: "
-                    f"**{best_fit:+,.0f}** (0 = no better than what we have)\n"
+                    f"- best paired WIN RATE vs the shipped default: "
+                    f"**{50 + best_fit:.1f}%** (50 = no better than what we have)\n"
                     f"- the reference itself scored {ref_abs:+,.0f} on this "
                     f"generation's seeds\n"
                     f"- reference on the SAME pool and seeds: shipped "
