@@ -402,6 +402,9 @@ def main():
     ap.add_argument("--policy", choices=("mlp", "linear"), default="linear",
                     help="linear = white-box: every coefficient is a named rule")
     ap.add_argument("--save_every", type=int, default=20)
+    ap.add_argument("--id_logit", type=float, default=6.0,
+                    help="strength of the identity prior at init; 6.0 puts",
+                    )
     ap.add_argument("--smooth", type=int, default=10)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--vf", type=float, default=0.25)
@@ -422,6 +425,15 @@ def main():
               else ("cuda" if torch.cuda.is_available() else "cpu"))
     if args.policy == "linear":
         dnet, snet = LinearDailyNet(), LinearSellNet(interactions=DEFAULT_INTERACTIONS)
+        # The identity prior is a HYPERPARAMETER, not a constant. At logit 6.0 it
+        # puts 99.3% of the probability on "do what the scheduler would do", and
+        # measured over 706 iterations the policy never left: p_id stayed
+        # 0.990-0.993 at every rung. The tight prior and tight KL were both
+        # chosen for a 2.5M-parameter MLP that walked off a tuned strategy along
+        # a noisy gradient. With 6,259 coefficients that risk is three orders of
+        # magnitude smaller, so the leash can be loosened.
+        dnet.init_identity(args.id_logit)
+        snet.init_identity(args.id_logit)
     else:
         dnet, snet = DailyNet(), SellNet()
     dnet, snet = dnet.to(device), snet.to(device)
