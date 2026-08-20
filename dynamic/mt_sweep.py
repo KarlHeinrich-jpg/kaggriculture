@@ -95,18 +95,19 @@ def variants(base):
     # NOTE: the baseline now has NURSE_LATE=1 by default, so the identity
     # control must switch it OFF explicitly rather than leave it unset.
     import os as _os
-    # Decisive test for covariate shift. opp_theta.json is now fit on OUR OWN
-    # games (agent2 in our seat) rather than the tape's, at essentially the same
-    # held-out quality (corr 0.95-0.99, bias near zero). If the -18,611 was
-    # covariate shift it should recover here; if it does not, the conclusion is
-    # that the BIAS was doing useful work.
-    P = dict(OPP_PREDICT=1)
+    # The additive form: prices keep the structural forecast, and the predictor
+    # is consulted ONLY to decline a purchase into a book it says will be
+    # flooded regardless. OPP_PREDICT stays off in every row here -- that is the
+    # whole point of the separation.
     return [
         ("agent2 (base)", _os.path.join(ROOT, "dynamic", "agent2.py")),
-        ("selffit predict", V(**P)),
-        ("selffit, veto off", V(ENPV_VETO=0, **P)),
-        ("selffit, gain .4", V(MV_OPP_GAIN=0.4, **P)),
-        ("selffit, MV off", V(MV_MARKET=0, **P)),
+        ("agent3 all off (identity)", V()),
+        ("dump veto 1.0", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=1.0)),
+        ("dump veto 1.5", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=1.5)),
+        ("dump veto 2.5", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=2.5)),
+        ("dump veto 4.0", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=4.0)),
+        ("dump veto 1.5 + predict", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=1.5,
+                                      OPP_PREDICT=1)),
     ]
 
 

@@ -492,6 +492,50 @@ MT_QUEUE = 0            # 1 = give the 10 order slots to the highest total value
 # Degrades gracefully: with no fitted theta it returns the structural forecast,
 # so the caller is never worse off than agent2.
 OPP_PREDICT = 0
+
+# OPP_DUMP_VETO: the predictor as an extra SIGNAL, not as a price input.
+#
+# OPP_PREDICT above swaps the estimator of N_them, and N_them is an input to
+# every price the agent computes -- so although `sale_value` itself is untouched,
+# the whole price signal moves, and it measured -18,502. Both explanations for
+# that were tested and refuted (re-calibrating ENPV_LABOR is monotonically
+# worse; re-fitting on our own games is unchanged), which leaves the finding
+# that the 2.5x under-read was LOAD-BEARING: it makes the agent behave as if the
+# books were emptier than they are, and aggression is what it lacks.
+#
+# So this is the additive form. Prices keep the structural forecast exactly, and
+# the prediction is consulted only to DECLINE: if the opponent's predicted
+# supply of a product exceeds what the town can still absorb by OPP_DUMP_RATIO,
+# that book is going to be flooded whatever we do, and buying more capacity to
+# produce into it is throwing seed at a market that will be on the floor.
+#
+#     flood(i) = E[Q_opp(i)] / D_i(t, shops) > OPP_DUMP_RATIO   ->  veto role i
+#
+# Subtractive by construction: it can only remove a purchase, never redirect one
+# and never move a price.
+#
+# MEASURED AND REFUTED, and the sign is the reason, not the calibration:
+# -144,968 / -129,410 / -121,217 / -115,251 at ratios 1.0 / 1.5 / 2.5 / 4.0,
+# monotone in the ratio, 0 or 1 paired wins in 240 at every setting.
+#
+# Two things are wrong with it. First the ratio is structurally above 1 for the
+# low-drain books whatever the opponent does -- MELON's town demand is 1 unit a
+# day, so E[Q_opp]/D explodes and the veto kills our highest-ENPV crop. Second,
+# and fatally, the SIGN is backwards against the marginal-value rule:
+#
+#     MV = P + alpha*|P'|*(N_them - N_us)
+#
+# N_them > N_us makes the suppression term POSITIVE. A book the opponent is
+# about to flood is worth MORE to us, not less, because every unit we put in
+# ahead of them costs them more than it costs us. Declining to produce into it
+# is the metering logic that measured -32,749. Section 19 says the same thing
+# from the other direction: the tape WINS by flooding books, because at a
+# crushed price level the larger producer comes out ahead.
+#
+# Left reachable and defaulted off. If it is ever revisited, the version worth
+# testing is the opposite sign.
+OPP_DUMP_VETO = 0
+OPP_DUMP_RATIO = 1.5
 OPP_MODEL = 1
 OPP_SCALE_LO = 0.65
 OPP_SCALE_HI = 1.30
@@ -530,7 +574,7 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "ENPV_BUY", "ENPV_VETO", "ENPV_LABOR", "ENPV_DRY_DAYS",
                 "ENPV_REPEAT", "ENPV_RISK_LAMBDA", "ENPV_DEATH_PROB",
                 "ENPV_ORDER", "MT_TIMING", "MT_HOLD_THRESHOLD", "MT_QUEUE",
-                "OPP_PREDICT")
+                "OPP_PREDICT", "OPP_DUMP_VETO", "OPP_DUMP_RATIO")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -1275,7 +1319,24 @@ def _order_seeds(orders, money, want, shed, seeds, shed_used, order=None):
     return money
 
 
-def _enpv_veto(want, farm, private, day):
+def _opp_flood(item, day, shops):
+    """E[Q_opp(i)] / (town demand still to come). Above 1 the book is heading
+    for the floor on their supply alone, whatever we do."""
+    theta = _load_theta().get(item)
+    if not theta:
+        return 0.0
+    opp_farm = S.get("opp_farm")
+    if opp_farm is None:
+        return 0.0
+    st = S["oppst"]
+    x = OPRED.feature_row(item, opp_farm, day, st,
+                          st.forecast_production(opp_farm, item, day))
+    predicted = OPRED.predict(theta, x)
+    demand = MM.drain_rate(item, shops) * max(1.0, SEASON_DAYS - day)
+    return predicted / max(1.0, demand)
+
+
+def _enpv_veto(want, farm, private, day, shops=()):
     """Drop roles whose next unit has negative ENPV, leaving the rest alone."""
     ctx = S.get("econ")
     if ctx is None or not want:
@@ -1300,8 +1361,13 @@ def _enpv_veto(want, farm, private, day):
                                 death_prob=ENPV_DEATH_PROB)
         else:
             v = 1.0
-        if v > 0:
-            out[role] = n
+        if v <= 0:
+            continue
+        if OPP_DUMP_VETO:
+            item = ANIMALS[role]["product"] if role in ANIMALS else role
+            if _opp_flood(item, day, shops) > OPP_DUMP_RATIO:
+                continue
+        out[role] = n
     return out
 
 
@@ -1501,7 +1567,7 @@ def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None,
 
     want = _role_demand(farm, day)
     if ENPV_VETO:
-        want = _enpv_veto(want, farm, private, day)
+        want = _enpv_veto(want, farm, private, day, shops)
     if _watering_debt(farm) > PLANT_MISS_TOLERANCE:
         for crop in CROPS:
             want.pop(crop, None)
@@ -1738,6 +1804,7 @@ def agent(obs):
             n_them[it] = _mv_supply(opp, it, day) if opp is not None else 0.0
         S["econ"] = TV.Ctx(inv, shops, day, n_us, n_them, alpha=ECON_ALPHA)
         S["alloc"] = {}
+        S["opp_farm"] = opp
 
     if S["day"] != day:
         S["day"] = day
