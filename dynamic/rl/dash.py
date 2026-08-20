@@ -115,15 +115,21 @@ def render():
     last = rows[-1]
     A(f"  iters    {len(rows)}   latest {last['it']}")
     A("")
-    A(f"  {C['b']}{'':<10}{'now':>8}{'mean50':>9}   last 48 iterations{C['r']}")
+    # 'now' is ONE iteration -- 96 paired episodes, se ~5pp on a win rate. It
+    # swung 12% to 100% on consecutive iterations while the 50-iteration mean
+    # sat near 50, and reading the single value as the state of the run is
+    # exactly the mistake this dashboard exists to prevent. mean50 is the column
+    # to read; 'now' is kept only to show the run is alive.
+    A(f"  {C['b']}{'':<10}{C['dim']}{'now*':>8}{C['r']}{C['b']}{'mean50':>9}   "
+      f"last 48 iterations{C['r']}")
 
     def line(label, key, fmt="{:.1f}%"):
         vals = [r[key] for r in rows if r[key] == r[key]]
         if not vals:
             return
         m50 = statistics.mean(vals[-50:])
-        A(f"  {label:<10}{fmt.format(vals[-1]):>8}{fmt.format(m50):>9}   "
-          f"{C['cy']}{spark(vals)}{C['r']}")
+        A(f"  {label:<10}{C['dim']}{fmt.format(vals[-1]):>8}{C['r']}"
+          f"{fmt.format(m50):>9}   {C['cy']}{spark(vals)}{C['r']}")
 
     line("SELF wr", "self")
     line("POOL wr", "pool")
@@ -157,6 +163,8 @@ def render():
         A(f"    {C['dim']}self-play near 50% and p_id {pid:.3f}: drifting without a "
           f"clear direction yet.{C['r']}")
     A("")
+    A(f"  {C['dim']}* 'now' is a single 96-episode iteration (se ~5pp) -- read "
+      f"mean50, not now.{C['r']}")
     A(f"  {C['dim']}baseline to beat: SHIPPED tape+market is +80,210 paired above "
       f"the RL start point.{C['r']}")
     A(f"  {C['dim']}final scores land in logs/rl/RESULTS.md when the run ends.{C['r']}")
