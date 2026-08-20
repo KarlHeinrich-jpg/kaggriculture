@@ -193,6 +193,24 @@ def encode_scalars(obs, farm, private, opp_farm, opp_state, day, hour):
     return v
 
 
+def scalar_names():
+    """Name every entry of `encode_scalars`, in order.
+
+    This is what makes an interpretable policy possible: the sell head sees ONLY
+    these, so a linear model over them reads as "this feature moves the
+    probability of that action by this much" -- no hidden representation.
+    """
+    n = ["cash", "day", "hour", "crew", "shed_fill", "quadrants",
+         "opp_cash", "opp_crew", "shops"]
+    for item in PRODUCTS:
+        n += [f"{item}.inv_offset", f"{item}.price", f"{item}.slope",
+              f"{item}.drain", f"{item}.we_hold",
+              f"{item}.opp_min", f"{item}.opp_max", f"{item}.opp_width"]
+    for c in CROPS:
+        n.append(f"seed.{c}")
+    return n
+
+
 SPATIAL_SIZE = BOARD * BOARD * C
 SCALAR_SIZE = 9 + 8 * len(PRODUCTS) + len(CROPS)
 OBS_SIZE = 2 * SPATIAL_SIZE + SCALAR_SIZE

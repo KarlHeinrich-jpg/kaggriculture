@@ -1,0 +1,14 @@
+{
+  "competition": "kaggriculture",
+  "strategy": "original deterministic economic scheduler; no RL or replay",
+  "created_utc_date": "2026-08-10",
+  "entry_point": "main.py:agent",
+  "archive_members": [
+    "main.py"
+  ],
+  "main_py_bytes": 40593,
+  "archive_bytes": 11412,
+  "main_py_sha256": "7c35800ee64c3e9bbc811493b25ead8b55221fc5117da9f026dd9b57f882439c",
+  "submission_tar_gz_sha256": "1e3c3a6d64951a5364df468ca61dd2ace30f3a35fa9012cb0b4808fc28f19e7f",
+  "synthetic_fuzz_cases": 750
+}
