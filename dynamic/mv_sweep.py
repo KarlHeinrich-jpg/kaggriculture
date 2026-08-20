@@ -81,16 +81,15 @@ def variants(base):
     W = dict(NURSE_LATE=1, NURSE_CROP="WHEAT")
     # NOTE: the baseline now has NURSE_LATE=1 by default, so the identity
     # control must switch it OFF explicitly rather than leave it unset.
-    OFF = dict(NURSE_LATE=0, ALLOC_MODE=0)
+    # Cumulative: where this session started vs what is now default.
+    START = dict(NURSE_LATE=0, ALLOC_MODE=0, ENPV_VETO=0)
     return [
-        ("static layout (base)", V(**OFF)),
-        ("hand-coded late wheat", V(ALLOC_MODE=0)),
-        ("SHIPPED alloc1 L15", V()),
-        ("alloc1 L13", V(ALLOC_LABOR=13.0)),
-        ("alloc1 L17", V(ALLOC_LABOR=17.0)),
-        ("alloc1 L15, econ value", V(ECON_VALUE=1)),
-        ("alloc1 L15, mv panic", V(MV_MARKET=1, MV_POSTURE=0, MV_PANIC_ORDER=1)),
-        ("alloc1 L15, tol2", V(PLANT_MISS_TOLERANCE=2)),
+        ("session start (base)", V(**START)),
+        ("+ late wheat (hand)", V(ALLOC_MODE=0, ENPV_VETO=0)),
+        ("+ opportunity alloc", V(ENPV_VETO=0)),
+        ("+ enpv veto = SHIPPED", V()),
+        ("shipped, veto L6", V(ENPV_LABOR=6.0)),
+        ("shipped, veto L10", V(ENPV_LABOR=10.0)),
     ]
 
 

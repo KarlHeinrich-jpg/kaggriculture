@@ -62,6 +62,7 @@ from dynamic import market_model as MM  # noqa: E402
 from dynamic.opp_state import OppState  # noqa: E402
 from dynamic import task_value as TV  # noqa: E402
 from dynamic import opportunity as OPP  # noqa: E402
+from dynamic import enpv as EN  # noqa: E402
 
 # ------------------------------------------------------------ engine mirrors
 
@@ -370,6 +371,51 @@ ALLOC_LABOR = 13.0      # $/unit-turn at the margin; flat plateau over 13-17
 # down, and it finishes inside the terminal liquidation window. Left off, and
 # left reachable so the next person does not re-derive it.
 TRUE_LAST_PLANT_DAY = 0
+
+# GLOBAL RESOURCE VALUATION (dynamic/enpv.py). The allocator above chooses among
+# CROPS for one tile. The real competition is wider -- $400 is a cow, or four
+# strawberry tiles, or two days of a bigger crew, or a quarter of a quadrant:
+#
+#     V(C,L,P,t) = max over a of  ENPV(a) + V(C-c_a, L-l_a, P-p_a, t)
+#
+# ENPV_BUY replaces BUY_ANIMALS_FIRST / SEED_BATCH_PER_TURN /
+# ANIMAL_BUY_CAP_PER_TURN / SPEND_RESERVE with that ranking. It does NOT touch
+# the layout -- ALLOC_MODE=2 measured -53,163, so the searched layout's answer
+# about WHERE a role belongs is kept. What changes is the ORDER cash is spent in
+# when it is short (days 3-12, exactly where the tape pulls ahead) and the
+# ability to DECLINE a purchase whose ENPV has gone negative: with 6 sheep
+# already owned the seventh is worth -118, and the searched genome buys 7.
+#
+# Ranking is by ENPV per unit of the SCARCEST resource, not by ROI. A wheat tile
+# is ROI 12.5 against melon's 11.5, but they consume the same one tile and
+# return $125 against $923, and we end seasons with $97k unspent -- cash has
+# never been the binding constraint here.
+# ENPV_BUY replaces the searched throttle wholesale and measures -90,059. Every
+# wholesale replacement in this project has: the genome's parameters are
+# co-adapted, and a principled subsystem dropped in on top of them breaks the
+# co-adaptation faster than its own correctness repays. The ONE change that has
+# worked (ALLOC_MODE) is additive -- it acts only where the existing policy does
+# nothing at all.
+#
+# ENPV_VETO is the subtractive form of the same discipline: keep the searched
+# purchase order exactly as it is, and only DECLINE a purchase whose ENPV has
+# gone negative. It can remove spending, never redirect it. The case it exists
+# for is measurable: with six sheep already owned the seventh is worth -118
+# against the wool book they have already filled, and the genome buys seven.
+# MEASURED, three disjoint seed sets, paired margin against the 6-agent pool:
+#   ENPV_VETO at ENPV_LABOR=8   +3,626 (t=3.4)  +4,619 (t=5.1)  +4,378 (t=4.6)
+# L10 and L13 are on the same plateau but swing more between sets (+2,126 to
+# +4,876); 8 is the stable point. Above ~20 the veto starts refusing purchases
+# that pay and it turns sharply negative (-3,279 at 20, -27,650 at 30).
+#
+# NOTE: the veto needs `S["econ"]`, which is only built while ALLOC_MODE or
+# ECON_VALUE is on. With ALLOC_MODE=0 it is silently inert -- measured as two
+# byte-identical rows, which is the symptom section 21 warns about.
+ENPV_BUY = 0
+ENPV_VETO = 1           # 1 = refuse purchases with ENPV <= 0, keep the rest
+ENPV_LABOR = 8.0        # $/unit-turn for the veto; ALLOC_LABOR=13 for crops
+ENPV_DRY_DAYS = 2.0     # Reserve_cash = Days_dry_spell * Cost_daily_burn
+ENPV_REPEAT = 6         # cap on identical picks per turn
 OPP_MODEL = 1
 OPP_SCALE_LO = 0.65
 OPP_SCALE_HI = 1.30
@@ -404,7 +450,9 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "MV_POSTURE", "MV_METER_MULT", "MV_PANIC_ORDER",
                 "ECON_VALUE", "ECON_ALPHA", "ECON_LAMBDA",
                 "DEFER_STRAWBERRY", "DEFER_MELON", "NURSE_CROP", "NURSE_UNTIL_DAY",
-                "NURSE_LATE", "ALLOC_MODE", "ALLOC_LABOR", "TRUE_LAST_PLANT_DAY")
+                "NURSE_LATE", "ALLOC_MODE", "ALLOC_LABOR", "TRUE_LAST_PLANT_DAY",
+                "ENPV_BUY", "ENPV_VETO", "ENPV_LABOR", "ENPV_DRY_DAYS",
+                "ENPV_REPEAT")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -1125,6 +1173,129 @@ def _order_seeds(orders, money, want, shed, seeds, shed_used):
     return money
 
 
+def _enpv_veto(want, farm, private, day):
+    """Drop roles whose next unit has negative ENPV, leaving the rest alone."""
+    ctx = S.get("econ")
+    if ctx is None or not want:
+        return want
+    shed = private.get("shed") or {}
+    wheat_px = ctx.market_price("WHEAT")
+    own_wheat = float(shed.get("WHEAT", 0))
+    out = {}
+    for role, n in want.items():
+        if n <= 0:
+            continue
+        if role in ANIMALS:
+            have = _animal_count(farm, role) + int(shed.get(role, 0))
+            v, _ = EN.enpv_animal(role, day, ctx, c_labor=ENPV_LABOR,
+                                  wheat_price=wheat_px, own_wheat=own_wheat,
+                                  n_same=have)
+        elif role in CROPS:
+            v, _ = EN.enpv_crop(role, day, ctx, c_labor=ENPV_LABOR,
+                                n_pending=_pending_units(farm, role, day))
+        else:
+            v = 1.0
+        if v > 0:
+            out[role] = n
+    return out
+
+
+def _enpv_orders(orders, money, want, shed, seeds, shed_used, farm, day):
+    """Spend cash in ENPV order, under a reserve sized to the daily burn.
+
+    Returns the money left. Emits the same BUY_SEED / BUY_ANIMAL orders the
+    fixed-throttle path does -- only the choice of which, and how many, differs.
+    """
+    ctx = S.get("econ")
+    if ctx is None:
+        return money
+    free_tiles = sum(1 for pos, role in S["layout"].items()
+                     if role != "EMPTY" and _unlocked(farm, pos)
+                     and farm["tiles"][pos[1]][pos[0]] is None)
+    turns_left = TURNS_PER_DAY * max(1, S.get("target_units", 1))
+    placed = _placed_animals(farm)
+    wheat_px = ctx.market_price("WHEAT")
+    committed = sum(1 for pos, role in S["layout"].items()
+                    if role != "EMPTY" and _unlocked(farm, pos)
+                    and isinstance(farm["tiles"][pos[1]][pos[0]], dict))
+    reserve = EN.reserve_cash(day, placed, S.get("target_units", 1), wheat_px,
+                              dry_days=ENPV_DRY_DAYS,
+                              committed_tiles=committed + free_tiles,
+                              floor=SPEND_RESERVE)
+    own_wheat = float(shed.get("WHEAT", 0))
+
+    cands = []
+    for role, n_want in want.items():
+        if n_want <= 0:
+            continue
+        if role in ANIMALS:
+            have = _animal_count(farm, role) + int(shed.get(role, 0))
+            v, det = EN.enpv_animal(role, day, ctx, c_labor=ENPV_LABOR,
+                                    wheat_price=wheat_px, own_wheat=own_wheat,
+                                    n_same=have)
+            room = max(0, SHED_CAPACITY - shed_used - 5)
+            if v > 0 and room > 0:
+                cands.append(EN.Candidate(
+                    "animal", role, v, ANIMALS[role]["cost"],
+                    turns=EN.ANIMAL_TURNS_PER_DAY * max(1, SEASON_DAYS - 1 - day),
+                    tiles=1, detail={"feed_days": SEASON_DAYS - 1 - day}))
+        elif role in CROPS:
+            pending = _pending_units(farm, role, day)
+            v, det = EN.enpv_crop(role, day, ctx, c_labor=ENPV_LABOR,
+                                  n_pending=pending)
+            if v > 0:
+                cands.append(EN.Candidate("crop", role, v, CROPS[role]["seed"],
+                                          turns=det.get("turns", 0), tiles=1,
+                                          detail=det))
+    if not cands:
+        return money
+
+    _, picks = EN.knapsack(cands, money, free_tiles, turns_left,
+                           reserve=reserve, repeat=int(ENPV_REPEAT))
+    batch = {}
+    for c in picks:
+        key = (c.kind, c.what)
+        batch[key] = batch.get(key, 0) + 1
+    for (kind, what), n in sorted(batch.items(), key=lambda kv: -kv[1]):
+        if len(orders) >= MAX_ORDERS:
+            break
+        if kind == "animal":
+            have = int(shed.get(what, 0))
+            n = min(n, max(0, want.get(what, 0) - have))
+            if n > 0:
+                orders.append(["BUY_ANIMAL", what, n])
+                money -= n * ANIMALS[what]["cost"]
+        else:
+            n = min(n, max(0, want.get(what, 0) - int(seeds.get(what, 0))))
+            if n > 0:
+                orders.append(["BUY_SEED", what, n])
+                money -= n * CROPS[what]["seed"]
+    return money
+
+
+def _animal_count(farm, role):
+    n = 0
+    for row in farm["tiles"]:
+        for tile in row:
+            if isinstance(tile, dict) and tile.get("animal") == role:
+                n += 1
+    return n
+
+
+def _pending_units(farm, crop, day):
+    """Units of `crop` our own living tiles will still produce -- the `prior`
+    that makes the next tile of it marginal rather than the first."""
+    total = 0.0
+    for row in farm["tiles"]:
+        for tile in row:
+            if isinstance(tile, dict) and tile.get("kind") == "PLANT" \
+                    and tile.get("crop") == crop:
+                age = day - int(tile.get("planted_day", day))
+                units, _, _ = OPP.yield_plan(crop, max(0, day - age))
+                total += units
+    return total
+
+
 def _town_demand_now(item, step, shops):
     """Units of `item` the town removes from the market at this step."""
     demand = 1 if item != "FERTILIZER" and step % TOWN_CENTER_SELL_INTERVAL == 0 else 0
@@ -1197,12 +1368,17 @@ def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None,
                 money -= n * price
 
     want = _role_demand(farm, day)
+    if ENPV_VETO:
+        want = _enpv_veto(want, farm, private, day)
     if _watering_debt(farm) > PLANT_MISS_TOLERANCE:
         for crop in CROPS:
             want.pop(crop, None)
 
     # 3/4. Animals and seeds, in the order the search prefers.
-    if BUY_ANIMALS_FIRST:
+    if ENPV_BUY:
+        money = _enpv_orders(orders, money, want, shed, seeds, shed_used,
+                             farm, day)
+    elif BUY_ANIMALS_FIRST:
         money = _order_animals(orders, money, want, shed, seeds, shed_used)
         money = _order_seeds(orders, money, want, shed, seeds, shed_used)
     else:

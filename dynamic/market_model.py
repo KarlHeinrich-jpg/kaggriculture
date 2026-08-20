@@ -165,6 +165,56 @@ def slope(item, inventory):
     return amp_hi * _dshape(p["above_func"], max(0.0, inventory - MARKET_I0), T)
 
 
+def price_f(item, inventory):
+    """`price` without the integer rounding. Used where a quantity is being
+    integrated over many units and the $1 rounding steps would accumulate."""
+    p = MARKET_PARAMS.get(item)
+    if p is None:
+        return float(PRICE_FLOOR)
+    base, T = p["base"], p["T"]
+    amp_lo, amp_hi = _AMP[item]
+    if inventory < MARKET_I0:
+        v = base + amp_lo * _shape(p["below_func"], MARKET_I0 - inventory, T)
+    elif inventory > MARKET_I0:
+        v = base - amp_hi * _shape(p["above_func"], inventory - MARKET_I0, T)
+    else:
+        v = float(base)
+    return max(float(PRICE_FLOOR), v)
+
+
+def realized_price(item, inventory, n, shops, days, opp_units=0.0):
+    """Average $/unit actually obtained for selling `n` units over `days`.
+
+        P_realized(Q) = f(Q_ours + E[Q_opponent])
+
+    This is the endogenous half of every asset valuation. A marginal quote
+    prices ONE more unit; an asset produces many, and each one it produces
+    lowers the price of the next. Without this feedback a sixth cow is worth
+    the same as the first, which is how a fixed-count portfolio search ends up
+    buying production the book cannot absorb.
+
+    The town drains at its own rate throughout, so the book is not a fixed
+    budget -- it refills. That is why MELON (no shop demand at all) and
+    STRAWBERRY (422 units of season demand against 62 to the floor) behave
+    completely differently under the same nominal depth.
+    """
+    n = float(n)
+    if n <= 0:
+        return 0.0
+    days = max(1, int(days))
+    rate = drain_rate(item, shops)
+    us_pd = n / days
+    them_pd = float(opp_units) / days
+    cur = float(inventory)
+    total = 0.0
+    for _ in range(days):
+        # Quote our slice at its own midpoint: the first unit of the day clears
+        # above the average and the last below it.
+        total += price_f(item, cur + us_pd * 0.5) * us_pd
+        cur = cur + us_pd + them_pd - rate
+    return max(float(PRICE_FLOOR), total / n)
+
+
 def revenue(item, inventory, n):
     """Exact proceeds of selling `n` units back-to-back from `inventory`.
 

@@ -1201,3 +1201,96 @@ hand-written version of it.
 `ECON_VALUE` remains exactly inert alongside all of this (+2,449 with and
 without), as section 22 predicted: nothing is ever dropped, so the thing that
 decides what to drop cannot matter.
+
+---
+
+## 24. Global resource valuation: the veto works, the replacement does not (2026-08-20)
+
+`dynamic/enpv.py` implements the full framework -- ENPV per asset with an
+endogenous price, dynamic feed costing, a multi-dimensional knapsack, the labour
+shadow price, bundle ROI and a burn-rate cash reserve. Two wirings of the same
+correct valuation, and they differ by 95,000 paired margin.
+
+### The endogenous price is the piece a fixed-count portfolio cannot have
+
+`market_model.realized_price(item, inv, n, shops, days, opp_units)` returns the
+AVERAGE $/unit for selling n units over `days`, against the town's drain and the
+opponent's expected supply. A marginal quote prices one more unit; an asset
+produces many, and each lowers the price of the next:
+
+    n units sold over 18 days, opponent selling the same
+    item          n=20   n=50  n=100  n=200  n=400      drain/day
+    MELON          248    228    148     73     38          1
+    STRAWBERRY     228    219    203    151     11         25
+    EGG             55     54     51     43     41         13
+
+A genome storing TC_COW=5 prices all five cows identically. With the feedback
+in, the marginal animal is valued against the book the existing herd has already
+filled, and the numbers are decisive: at 6 sheep owned the seventh is worth
+**-118**, and the searched genome buys seven.
+
+### Wholesale replacement: -90,059
+
+`ENPV_BUY` replaces the searched purchase throttle with the knapsack. It starts
+BETTER -- 20 producing tiles by day 3 against the base's 8, which is the ramp
+this project has been chasing since section 19 -- and then collapses to 8 tiles
+by day 9 with cash pinned at $0.00. It spends every dollar on seed and cannot
+afford a single hand to water it.
+
+Two bugs found and fixed on the way, both worth keeping:
+
+- **The reserve must be sized to the crew the farm WILL need**, not the one it
+  has. Crew is sized to the current task list, so on day 0 it is 1 and a burn-
+  rate reserve built from it is about $2. (-115,067 -> -90,059 when fixed.)
+- **It needs a floor at SPEND_RESERVE.** The rest of the agent refuses to hire
+  while `money - cost < SPEND_RESERVE`, so a reserve below that number does not
+  under-save, it silently disables hiring.
+
+Even fixed it is -90,059, and insensitive to every parameter (L8 -88,718,
+L20 -115,359, dry-days 1/2/4 all within 600). That is a behavioural break, not
+a mis-valuation.
+
+### Subtractive: +4,208 mean over three seed sets
+
+`ENPV_VETO` keeps the searched purchase order exactly and only DECLINES a
+purchase whose ENPV has gone negative. It can remove spending, never redirect it.
+
+| ENPV_LABOR | 135791 (n=240) | 515151 (n=288) | 929292 (n=288) |
+|---|---|---|---|
+| **8** | **+3,626** (t=3.4) | **+4,619** (t=5.1) | **+4,378** (t=4.6) |
+| 10 | — | +4,876 (t=4.8) | +2,126 (t=2.0) |
+| 13 | +1,598 (t=1.4) | +4,681 (t=4.5) | +2,946 (t=2.8) |
+| 20 | -3,279 | — | — |
+| 30 | -27,650 | — | — |
+
+Shipped at 8, the stable point. Above ~20 the veto starts refusing purchases
+that pay.
+
+**The veto is inert while ALLOC_MODE=0** -- it needs `S["econ"]`, which is only
+built when the allocator or ECON_VALUE is on. Measured as two byte-identical
+rows, which is exactly section 21's symptom.
+
+### THE PATTERN, now established across five attempts
+
+| change | shape | result |
+|---|---|---|
+| opportunity allocator (ALLOC_MODE=1) | **additive** -- acts only where the static role has expired | **+2,865** |
+| ENPV veto | **subtractive** -- only removes negative-ENPV spending | **+4,208** |
+| ALLOC_MODE=2, free argmax layout | replacement | -53,163 |
+| ENPV_BUY, knapsack purchasing | replacement | -90,059 |
+| MV metering in the market layer | replacement | -32,749 |
+
+**The searched genome's parameters are co-adapted.** A principled subsystem
+dropped in on top of them breaks that co-adaptation faster than its own
+correctness repays. Every gain this session came from a change that acts only
+where the existing policy does nothing, or that only declines. Design new work
+to that shape.
+
+### Cumulative, one fresh seed set (n=336 paired)
+
+| build | paired margin | vs session start | t |
+|---|---|---|---|
+| session start | -80,909 | — | — |
+| + late wheat (hand-coded) | -78,605 | +2,304 | 9.3 |
+| + opportunity allocator | -78,044 | +2,865 | 10.7 |
+| **+ ENPV veto (SHIPPED)** | **-73,390** | **+7,519** | **8.5** |

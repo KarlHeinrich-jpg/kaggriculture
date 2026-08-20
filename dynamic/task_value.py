@@ -72,6 +72,24 @@ class Ctx:
         self.alpha = float(alpha)
         self._cache = {}
 
+    def market_price(self, item):
+        """The book's current quote, with no marginal or suppression term."""
+        return float(MM.price(item, int(self.inv.get(item, MM.MARKET_I0))))
+
+    def realized(self, item, units, days, prior=0.0):
+        """Average $/unit for selling `units` of `item` over `days`, against
+        the town's drain, the opponent's expected supply, and `prior` -- what
+        we are ALREADY committed to selling into the same book.
+
+        `prior` is what makes a marginal asset cheaper than the first one: it
+        shifts the starting inventory to where our existing production will
+        already have pushed it.
+        """
+        inv = int(self.inv.get(item, MM.MARKET_I0))
+        opp = self.n_them.get(item, 0.0)
+        return MM.realized_price(item, inv + max(0.0, prior), units,
+                                 self.shops, days, opp_units=opp)
+
     def unit_price(self, item):
         v = self._cache.get(item)
         if v is None:
