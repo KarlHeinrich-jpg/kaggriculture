@@ -119,10 +119,20 @@ def main():
         weights = {k: z[k].astype(np.float32) for k in z.files}
         tag = os.path.basename(ckpt)
 
+    # EVERY HISTORICAL BUILD WORTH BEATING, not just the current submission.
+    # Asking "did it beat what we ship" is the wrong bar if what we ship is not
+    # our best: the ladder has 55600561 at 2630.9 against 55614625's 1828.3, so
+    # the shipped file is 800 points BELOW an earlier one (HANDOFF section 7).
+    # deliver/ holds the two baked candidates from the tape+market line.
     cands = [("RL identity (baseline)", "identity"),
              ("SHIPPED tape+market", os.path.join(ROOT, "submission", "main.py")),
              ("kawa unmodified",
               os.path.join(ROOT, "opponents", f"{POOL[0]}.py"))]
+    for label, rel in (("deliver BEST_b0_tapeswap", "deliver/BEST_b0_tapeswap.py"),
+                       ("deliver ALT_struct", "deliver/ALT_struct.py")):
+        path = os.path.join(ROOT, rel)
+        if os.path.exists(path):
+            cands.append((label, path))
     if weights is not None:
         cands.insert(0, (f"RL trained {tag}", "rl"))
 

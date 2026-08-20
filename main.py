@@ -575,3 +575,337 @@ def agent(obs):
 
 def _kaggle_submission_entrypoint(obs):
     return agent(obs)
+
+
+# --- SmartMarketController (C69) ---
+
+_PREMIUM = _PREMIUM
+_MARKET_PARAMS = _MARKET_PARAMS
+_ADAPT_MAX_OPP_HORIZON = _ADAPT_MAX_OPP_HORIZON
+_PREEMPT_MAX_CLONE_DISTANCE = _PREEMPT_MAX_CLONE_DISTANCE
+_PREEMPT_MIN_FUTURE_QUANTITY = _PREEMPT_MIN_FUTURE_QUANTITY
+_PREEMPT_START = _PREEMPT_START
+_PREEMPT_STOP = _PREEMPT_STOP
+_PREEMPT_MAX_BATCH = _PREEMPT_MAX_BATCH
+_ALPHA_PRIOR = 0.3
+_ALPHA_EVENT_WEIGHT = 2.0
+_ALPHA_DECAY = 0.97
+_QTY_BETA = 0.30
+_CONFIDENCE_GATE = 0.55
+_MIN_EVENTS_FOR_GATE = 2
+_EXTRA_PULL_CONFIDENCE = 0.92
+_EXTRA_PULL_VALUE_RATIO = 1.15
+_MAX_EXTRA_PULL = 1
+_STATE = {0: {}, 1: {}}
+
+
+def _new_state():
+    return {
+        "last_step": -1,
+        "inventory": {},
+        "own_sells": {},
+        "shops": (),
+        # Dirichlet-style pseudo-counts over "true horizon offset == h".
+        # horizon_prob() below normalizes these into a genuine, calibrated
+        # confidence instead of the unbounded score c68 uses internally.
+        "horizon_alpha": {h: _ALPHA_PRIOR for h in range(1, _ADAPT_MAX_OPP_HORIZON + 1)},
+        "events": 0,
+        "opp_qty_ewma": {item: None for item in _PREMIUM},
+        "opp_qty_events": {item: 0 for item in _PREMIUM},
+        "debts": {},
+    }
+
+
+
+def _state(obs, step):
+    seat = _seat(obs)
+    state = _STATE[seat]
+    if step == 0 or step < int(state.get("last_step", -1)):
+        state = _new_state()
+        _STATE[seat] = state
+    return state
+
+
+
+def _best_horizon_and_confidence(state):
+    alpha = state["horizon_alpha"]
+    total = sum(alpha.values()) or 1.0
+    probs = {h: v / total for h, v in alpha.items()}
+    best_h = max(probs, key=lambda h: (probs[h], -h))
+    return best_h, probs[best_h]
+
+
+
+def _update_market_estimates(obs, step):
+    """Refresh the EWMA horizon-fit scores and per-item quantity estimate.
+
+    Mirrors c68's own delta-inference (own sale + town drain removed from the
+    raw market-inventory delta) but feeds the result into bounded EWMAs
+    instead of an unbounded cumulative score, so (a) the signal can be turned
+    into a genuine probability via softmax and (b) stale evidence decays
+    instead of permanently anchoring the estimate.
+    """
+    state = _state(obs, step)
+    current = dict(_get(_get(obs, "market", {}) or {}, "inventory", {}) or {})
+    previous = dict(state.get("inventory", {}) or {})
+    prev_step = int(state.get("last_step", -1))
+
+    if previous and prev_step == step - 1 and _clone_distance(obs) <= _PREEMPT_MAX_CLONE_DISTANCE:
+        own = dict(state.get("own_sells", {}) or {})
+        shops = tuple(state.get("shops", ()) or ())
+        for item in _PREMIUM:
+            delta = int(current.get(item, 0) or 0) - int(previous.get(item, 0) or 0)
+            inferred = delta + _town_drain(prev_step, shops, item) - int(own.get(item, 0) or 0)
+            inferred -= _planned_premium(prev_step, item)
+            if inferred < _PREEMPT_MIN_FUTURE_QUANTITY:
+                continue
+
+            state["events"] += 1
+
+            # (1) EWMA the observed magnitude directly -- this is the estimate
+            # we will actually sell against, instead of blindly trusting that
+            # the opponent's batch equals whatever our own tape does later.
+            prior = state["opp_qty_ewma"][item]
+            state["opp_qty_ewma"][item] = inferred if prior is None else (
+                (1 - _QTY_BETA) * prior + _QTY_BETA * inferred
+            )
+            state["opp_qty_events"][item] += 1
+
+            # (2) Turn this single event into a *soft vote* over candidate
+            # horizons (similarity in [0, 1], zero where the tape has no
+            # planned sale to compare against), then EWMA that vote into a
+            # genuine, bounded, sums-to-1 confidence distribution -- so the
+            # 80% gate means what it says instead of depending on how long
+            # the game has run.
+            similarity = {}
+            for horizon in range(1, _ADAPT_MAX_OPP_HORIZON + 1):
+                expected = _planned_premium(prev_step + horizon, item)
+                similarity[horizon] = (
+                    min(inferred, expected) / float(max(inferred, expected)) if expected > 0 else 0.0
+                )
+            total_similarity = sum(similarity.values())
+            if total_similarity > 0:
+                vote = {h: s / total_similarity for h, s in similarity.items()}
+                alpha = state["horizon_alpha"]
+                state["horizon_alpha"] = {
+                    h: alpha[h] * _ALPHA_DECAY + _ALPHA_EVENT_WEIGHT * vote[h]
+                    for h in alpha
+                }
+
+    state["last_step"] = step
+    state["inventory"] = current
+    state["shops"] = tuple(_get(_get(obs, "town", {}) or {}, "unlocked_shops", []) or [])
+    return state
+
+
+
+def _record_own_sells(obs, action, step):
+    state = _state(obs, step)
+    sold = {}
+    for order in action.get("market", []) or []:
+        if len(order) >= 3 and order[0] == "SELL" and order[1] in _PREMIUM:
+            sold[order[1]] = sold.get(order[1], 0) + max(0, int(order[2]))
+    state["own_sells"] = sold
+
+
+
+def _opponent_qty_estimate(state, item, step, horizon):
+    """Blend the EWMA-observed magnitude with c68's tape-mirroring prior.
+
+    Small-sample shrinkage: with few observed events we lean on the tape
+    (c68's original assumption); as evidence accumulates we trust the
+    directly observed EWMA more.
+    """
+    tape_guess = _planned_premium(step + horizon, item)
+    ewma = state["opp_qty_ewma"].get(item)
+    events = state["opp_qty_events"].get(item, 0)
+    if ewma is None:
+        return tape_guess
+    weight = min(1.0, events / 4.0)
+    return weight * ewma + (1 - weight) * tape_guess
+
+
+
+def _value_gap(obs, item, qty, opp_qty_at_target):
+    """Value of selling `qty` now vs. leaving it to be sold alongside the
+    opponent's estimated same-turn batch `opp_qty_at_target` turns later.
+    """
+    if qty <= 0:
+        return 0.0
+    market = _get(obs, "market", {}) or {}
+    inventory = _get(market, "inventory", {}) or {}
+    prices = _get(market, "prices", {}) or {}
+    current_inventory = int(_get(inventory, item, 10000) or 0)
+    price_now = float(_get(prices, item, _market_price(item, current_inventory)) or 0)
+    price_if_wait = float(_market_price(item, current_inventory + qty + max(0, opp_qty_at_target)))
+    return qty * (price_now - price_if_wait)
+
+
+
+def _predict_and_frontrun(obs, action, step):
+    if not (_PREEMPT_START <= step < _PREEMPT_STOP):
+        return action
+    state = _state(obs, step)
+    if _clone_distance(obs) > _PREEMPT_MAX_CLONE_DISTANCE:
+        return action
+
+    best_h, confidence = _best_horizon_and_confidence(state)
+    if state["events"] < _MIN_EVENTS_FOR_GATE or confidence < _CONFIDENCE_GATE:
+        return action
+
+    horizon = best_h
+    # Optionally reach one extra turn earlier when both the horizon call and
+    # the extra pull's value gap are strongly favourable ("front-run by two
+    # turns if prices are optimal").
+    if (
+        _MAX_EXTRA_PULL > 0
+        and horizon + 1 <= _ADAPT_MAX_OPP_HORIZON
+        and confidence >= _EXTRA_PULL_CONFIDENCE
+    ):
+        base_value = sum(
+            _value_gap(
+                obs, item,
+                min(_PREEMPT_MAX_BATCH, max(0, int(_opponent_qty_estimate(state, item, step, horizon)))),
+                _opponent_qty_estimate(state, item, step, horizon),
+            )
+            for item in _PREMIUM
+        )
+        extra_value = sum(
+            _value_gap(
+                obs, item,
+                min(_PREEMPT_MAX_BATCH, max(0, int(_opponent_qty_estimate(state, item, step, horizon + 1)))),
+                _opponent_qty_estimate(state, item, step, horizon + 1),
+            )
+            for item in _PREMIUM
+        )
+        if base_value > 0 and extra_value >= base_value * _EXTRA_PULL_VALUE_RATIO:
+            horizon = horizon + 1
+
+    market = list(action.get("market") or [])
+    if len(market) >= 10:
+        return action
+    remaining = _projected_shed(obs, action)
+    for raw in market:
+        if len(raw) >= 3 and raw[0] == "SELL":
+            item = raw[1]
+            remaining[item] = max(0, int(remaining.get(item, 0) or 0) - max(0, int(raw[2])))
+
+    shifted = {}
+    shift_state = state.setdefault("debts", {})
+    for item in _PREMIUM:
+        opp_qty = _opponent_qty_estimate(state, item, step, horizon)
+        if opp_qty < _PREEMPT_MIN_FUTURE_QUANTITY:
+            continue
+        target = min(
+            max(0, int(remaining.get(item, 0) or 0)),
+            _PREEMPT_MAX_BATCH,
+            max(1, int(round(opp_qty))),
+        )
+        if target <= 0 or len(market) >= 10:
+            continue
+        gap = _value_gap(obs, item, target, opp_qty)
+        if gap <= 0:
+            continue  # selling now would not beat waiting -- skip
+        market.append(["SELL", item, target])
+        remaining[item] = max(0, int(remaining.get(item, 0) or 0) - target)
+        shifted[item] = target
+
+    if shifted:
+        action["market"] = market[:10]
+        due_step = step + horizon
+        due = shift_state.setdefault(due_step, {})
+        for item, quantity in shifted.items():
+            due[item] = due.get(item, 0) + quantity
+    return action
+
+
+
+def _repay_shift(obs, action, step):
+    state = _state(obs, step)
+    debts = state.setdefault("debts", {})
+    due = {item: max(0, int(q)) for item, q in dict(debts.pop(step, {}) or {}).items()}
+    if not due:
+        return action
+    market = []
+    for raw in action.get("market", []) or []:
+        order = list(raw)
+        if len(order) >= 3 and order[0] == "SELL" and due.get(order[1], 0) > 0:
+            item = order[1]
+            requested = max(0, int(order[2]))
+            reduction = min(requested, due[item])
+            requested -= reduction
+            due[item] -= reduction
+            if requested <= 0:
+                continue
+            order[2] = requested
+        market.append(order)
+    action["market"] = market
+    return action
+
+
+
+def _joint_order_score(obs, state, order):
+    score = _impact_score(obs, order)
+    if score <= 0 or not _is_sell(order):
+        return score
+    item = str(order[1])
+    quantity = max(0, int(order[2]))
+    if item in _PREMIUM:
+        opp_qty = state["opp_qty_ewma"].get(item)
+        if opp_qty is not None and opp_qty > 0:
+            # Re-price the "later" side of the impact score assuming the
+            # opponent's estimated same-turn batch lands alongside ours,
+            # instead of pretending we are the only seller this turn.
+            market = _get(obs, "market", {}) or {}
+            inventory = _get(market, "inventory", {}) or {}
+            prices = _get(market, "prices", {}) or {}
+            current_inventory = int(_get(inventory, item, 10000) or 0)
+            current_quote = float(_get(prices, item, _market_price(item, current_inventory)) or 0)
+            later_quote = float(_market_price(item, current_inventory + quantity + int(round(opp_qty))))
+            score = float(quantity) * max(0.0, current_quote - later_quote)
+    market = _get(obs, "market", {}) or {}
+    inventory = _get(market, "inventory", {}) or {}
+    current_inventory = int(_get(inventory, item, 10000) or 0)
+    demand = max(0.25, _demand_per_day(obs, None, item))
+    excess = max(0.0, current_inventory + quantity - 10000)
+    urgency = min(1.0, (excess / demand) / 10.0)
+    return score * (1.0 + _DEMAND_ALPHA * urgency)
+
+
+
+def _rank_sell_slots(obs, action, state):
+    action = _copy_action(action)
+    market = list(action.get("market") or [])
+    rows = [
+        (_joint_order_score(obs, state, order), -index, list(order))
+        for index, order in enumerate(market)
+        if _is_sell(order)
+    ]
+    if len(rows) < 2:
+        return action
+    rows.sort(reverse=True)
+    ranked = iter(row[2] for row in rows)
+    action["market"] = [next(ranked) if _is_sell(order) else order for order in market]
+    return action
+
+
+
+def agent(obs):
+    try:
+        step = min(max(0, int(_get(obs, "step", 0) or 0)), len(_ACTIONS) - 1)
+        state = _update_market_estimates(obs, step)
+        action = _weed_repair_action(obs, _copy_action(_ACTIONS[step]), step)
+        action = _repay_shift(obs, action, step)
+        action = _rank_sell_slots(obs, action, state)
+        action = _predict_and_frontrun(obs, action, step)
+        action = _terminal_liquidation(obs, action, step)
+        action = _align_hands(action, obs)
+        _record_own_sells(obs, action, step)
+        return action
+    except Exception:
+        farm = _farm(obs, _seat(obs))
+        return {
+            "farmer": ["PASS"],
+            "hands": [["PASS"] for _ in (_get(farm, "hands", []) or [])],
+            "market": [],
+        }
