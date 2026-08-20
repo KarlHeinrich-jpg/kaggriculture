@@ -78,8 +78,10 @@ def play(job):
         return (lbl, opp, seed, seat, 0.0, 0.0, traceback.format_exc()[-300:])
 
 
+from route.search import to_params  # noqa: E402
+
+
 def base_genome():
-    from route.search import to_params
     g = json.load(open(os.path.join(ROOT, "dynamic", "best_genome.json")))["genome"]
     p = to_params(dict(g))
     p["OPP_MODEL"] = 1          # the MV rule needs the per-turn observation
@@ -94,21 +96,23 @@ def variants(base):
     W = dict(NURSE_LATE=1, NURSE_CROP="WHEAT")
     # NOTE: the baseline now has NURSE_LATE=1 by default, so the identity
     # control must switch it OFF explicitly rather than leave it unset.
-    import os as _os
-    # The additive form: prices keep the structural forecast, and the predictor
-    # is consulted ONLY to decline a purchase into a book it says will be
-    # flooded regardless. OPP_PREDICT stays off in every row here -- that is the
-    # whole point of the separation.
-    return [
-        ("agent2 (base)", _os.path.join(ROOT, "dynamic", "agent2.py")),
-        ("agent3 all off (identity)", V()),
-        ("dump veto 1.0", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=1.0)),
-        ("dump veto 1.5", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=1.5)),
-        ("dump veto 2.5", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=2.5)),
-        ("dump veto 4.0", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=4.0)),
-        ("dump veto 1.5 + predict", V(OPP_DUMP_VETO=1, OPP_DUMP_RATIO=1.5,
-                                      OPP_PREDICT=1)),
-    ]
+    import os as _os, json as _json
+    # Is the GA's reported improvement real, or is it the max over noisy
+    # estimates? It scores each genome on 5 seeds x 6 opponents = 15 paired
+    # games and redraws the seeds every generation, which is well inside the
+    # region HANDOFF section 5 says is noise-dominated. Re-evaluate its saved
+    # best at a sample size where a rank means something.
+    out = [("agent2 default (base)", V())]
+    for tag, fn in (("GA search2 best", "best_genome2.json"),
+                    ("GA search3 best", "best_genome3.json")):
+        path = _os.path.join(ROOT, "dynamic", fn)
+        if not _os.path.exists(path):
+            continue
+        raw = _json.load(open(path))
+        g = to_params(dict(raw["genome"]))
+        g["OPP_MODEL"] = 1
+        out.append((f"{tag} (gen {raw['gen']}, claimed {raw['fitness']:+,.0f})", g))
+    return out
 
 
 def report(res, V, n_seeds):

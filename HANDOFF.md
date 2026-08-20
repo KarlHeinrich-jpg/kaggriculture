@@ -1529,3 +1529,33 @@ GENOME and let the search re-adapt its consumers around it. That is what
 byte-identical to its sibling because `MV_MARKET` was already 0. Section 21's
 rule applies to my own sweeps too — confirm a parameter is live before spending
 games on it.
+
+---
+
+## 28. GA methodology: selection is sound, the recorded champion is not
+
+`dynamic/search2.py` and `search3.py` score each genome on 5 seeds x 6 opponents
+= 30 games, 15 paired. Section 5's rule says a variant needs >=100 games before
+its rank means anything, so that number deserved a second look. It splits into
+two questions with different answers.
+
+**Selection is fine.** The seed list is drawn once per generation and every
+genome in that generation plays the same seeds, so within-generation ranking is
+paired with common random numbers — the low-variance comparison. That is the
+only comparison selection pressure actually uses.
+
+**The recorded champion is biased upward.** `best_fit` is a running max across
+generations, and generation 6's best was scored on generation 6's seeds while
+generation 7's was scored on different ones. Taking a max over noisy draws from
+different distributions selects partly for a lucky seed draw, and the checkpoint
+saves whatever won that draw. So a headline like "-48,821 at generation 6" is
+not comparable to a hand-tuned number measured at n=336.
+
+**Consequence for anyone reading a `best_genome*.json`: re-measure it before
+believing it.** The fitness field records what won a 15-paired-game draw, not
+the genome's standing. `dynamic/mt_sweep.py` will load and re-evaluate any
+checkpoint at a real sample size.
+
+**Also: do not edit `dynamic/search3.py` while it runs**, not just the agent.
+The pool is recreated every generation with the forkserver context, so newly
+spawned workers re-import the main module and would pick up a mid-run edit.
