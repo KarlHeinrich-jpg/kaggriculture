@@ -287,6 +287,9 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--hours", type=float, default=48.0)
     ap.add_argument("--ent", type=float, default=0.001)
+    ap.add_argument("--save_every", type=int, default=20)
+    ap.add_argument("--smooth", type=int, default=10)
+    ap.add_argument("--resume", action="store_true")
     ap.add_argument("--vf", type=float, default=0.25)
     ap.add_argument("--kl", type=float, default=0.05,
                     help="KL leash back to the scheduler-identity init")
@@ -309,12 +312,24 @@ def main():
     t0 = time.time()
     log = open(os.path.join(CKPT_DIR, "train.log"), "a")
     best = -9e9
+    recent = []
     snapshots = []
     # Frozen copy of the identity init: the prior the KL term pulls back to.
     import copy as _copy
     dref, sref = _copy.deepcopy(dnet).eval(), _copy.deepcopy(snet).eval()
     for _pp in list(dref.parameters()) + list(sref.parameters()):
         _pp.requires_grad_(False)
+
+    _lat = os.path.join(CKPT_DIR, "latest.pt")
+    if getattr(args, "resume", False) and os.path.exists(_lat):
+        _ck = torch.load(_lat, map_location=device, weights_only=False)
+        dnet.load_state_dict(_ck["daily"])
+        snet.load_state_dict(_ck["sell"])
+        if "opt" in _ck:
+            opt.load_state_dict(_ck["opt"])
+        best = float(_ck.get("best", -9e9))
+        print("resumed from iter %d (best %.1f%%)" % (_ck.get("iter", 0), best),
+              flush=True)
     for it in range(args.iters):
         if time.time() - t0 > args.hours * 3600:
             print("time budget reached", flush=True)
@@ -361,14 +376,31 @@ def main():
         print(line, flush=True)
         log.write(line + "\n")
         log.flush()
-        if wr > best:
-            best = wr
+        # BEST IS ON A MOVING AVERAGE, not a single iteration. Win rate over 96
+        # paired episodes has se ~5pp, so scoring on one iteration locks 'best'
+        # onto whichever early iteration got lucky and then never beats it.
+        recent.append(wr)
+        del recent[:-args.smooth]
+        smooth = statistics.mean(recent)
+
+        def _save(tag):
             torch.save({"daily": dnet.state_dict(), "sell": snet.state_dict(),
-                        "iter": it, "winrate": wr},
-                       os.path.join(CKPT_DIR, "best.pt"))
-            export_numpy(dnet.cpu(), snet.cpu(), os.path.join(CKPT_DIR, "best.npz"))
+                        "opt": opt.state_dict(), "iter": it, "winrate": wr,
+                        "smooth": smooth, "best": best},
+                       os.path.join(CKPT_DIR, tag + ".pt"))
+            export_numpy(dnet.cpu(), snet.cpu(),
+                         os.path.join(CKPT_DIR, tag + ".npz"))
             dnet.to(device)
             snet.to(device)
+
+        if len(recent) >= args.smooth and smooth > best:
+            best = smooth
+            _save("best")
+        # An unattended run must not lose ten hours to a crash at hour ten, and
+        # it must be resumable, so 'latest' lands on a fixed cadence whatever
+        # the score is doing.
+        if it % args.save_every == 0:
+            _save("latest")
 
 
 if __name__ == "__main__":
