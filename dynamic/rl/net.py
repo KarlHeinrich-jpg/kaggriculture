@@ -214,7 +214,17 @@ class NumpyPolicy(PA.Policy):
     def __init__(self, weights, explore=True, seed=0):
         import numpy as np
         self.np = np
-        self.W = {k: np.asarray(v, dtype=np.float32) for k, v in weights.items()}
+        W = {k: np.ascontiguousarray(v, dtype=np.float32)
+             for k, v in weights.items()}
+        # Pre-transpose and pre-bind. `h @ W.T` builds a non-contiguous view on
+        # every call and every lookup was an f-string format in the hot path;
+        # together those made a forward 5.3 ms instead of tens of microseconds.
+        self.W = W
+        self.L = {}
+        for tag, depth in (("d", 3), ("s", 2)):
+            self.L[tag] = [(np.ascontiguousarray(W[f"{tag}.trunk.{2 * i}.weight"].T),
+                            W[f"{tag}.trunk.{2 * i}.bias"]) for i in range(depth)]
+            self.L[tag + "_norm"] = (W[f"{tag}.norm.weight"], W[f"{tag}.norm.bias"])
         self.explore = explore
         self.rng = np.random.default_rng(seed)
         self.traj = {"daily": [], "sell": []}
@@ -225,19 +235,17 @@ class NumpyPolicy(PA.Policy):
     def _gelu(self, h):
         return h * 0.5 * (1.0 + self.np.tanh(0.7978845608 * (h + 0.044715 * h ** 3)))
 
-    def _layernorm(self, h, tag):
-        m, v = h.mean(-1, keepdims=True), h.var(-1, keepdims=True)
-        return (h - m) / self.np.sqrt(v + 1e-5) * self.W[f"{tag}.norm.weight"] \
-            + self.W[f"{tag}.norm.bias"]
-
     def _trunk(self, x, tag, depth):
         h = x
-        for i in range(depth):
-            li = 2 * i
-            h = h @ self.W[f"{tag}.trunk.{li}.weight"].T + self.W[f"{tag}.trunk.{li}.bias"]
-            if i < depth - 1:
+        layers = self.L[tag]
+        for i, (w, b) in enumerate(layers):
+            h = h @ w + b
+            if i < len(layers) - 1:
                 h = self._gelu(h)
-        return self._layernorm(self._gelu(h), tag)
+        h = self._gelu(h)
+        g, be = self.L[tag + "_norm"]
+        m, v = h.mean(-1, keepdims=True), h.var(-1, keepdims=True)
+        return (h - m) / self.np.sqrt(v + 1e-5) * g + be
 
     def _softmax(self, z):
         z = z - z.max(-1, keepdims=True)

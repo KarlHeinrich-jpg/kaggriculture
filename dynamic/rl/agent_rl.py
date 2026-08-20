@@ -712,6 +712,7 @@ def _reset_state():
               "target_units": 1, "bought": {a: 0 for a in ANIMALS},
               "pending": [], "idle_target": {},
               "opp": OpponentModel(), "oppst": OppState(), "last_sales": {},
+              "supply_cache": {},
               "alloc": {}})
 
 
@@ -1655,7 +1656,26 @@ def _load_theta():
 
 
 def _mv_supply(opp_farm, item, day):
-    """N_them: units of `item` the opponent can still put on the market."""
+    """N_them: units of `item` the opponent can still put on the market.
+
+    Cached per (item, day). NOT an exact identity with agent4: the opponent's
+    board also moves within a day, so freezing the forecast changes a few sell
+    decisions. Measured over 24 games it shifts the margin by -49.5 on a
+    per-game sd of ~30,000, i.e. 0.008 standard errors, against a 4.5x speedup
+    of the whole rollout. The RL baseline is therefore measured directly from
+    THIS agent under an identity policy, not assumed equal to agent4.
+
+    The uncached version was 4.94 s of a 22 s game --
+    12,942 calls, each looping all 100 tiles, for 1.29M tile visits -- because
+    the sell path asks for it every turn for every product. It is a forecast to
+    season end off the visible board, so it moves on the scale of a day, not a
+    turn; the market state that DOES move per turn enters through the price, not
+    through this.
+    """
+    ck = ("them", item, day)
+    hit = S.get("supply_cache")
+    if hit is not None and ck in hit:
+        return hit[ck]
     st = S["oppst"]
     if OPP_PREDICT:
         theta = _load_theta().get(item)
@@ -1663,7 +1683,12 @@ def _mv_supply(opp_farm, item, day):
             structural = st.forecast_production(opp_farm, item, day)
             x = OPRED.feature_row(item, opp_farm, day, st, structural)
             return OPRED.predict(theta, x) * MV_OPP_GAIN
-    return st.supply(opp_farm, item, day, gain=MV_OPP_GAIN)
+    _v = st.supply(opp_farm, item, day, gain=MV_OPP_GAIN)
+    cache = S.get("supply_cache")
+    if cache is None:
+        cache = S["supply_cache"] = {}
+    cache[ck] = _v
+    return _v
 
 
 def _mv_own_supply(farm, private, item, day):
@@ -1673,6 +1698,11 @@ def _mv_own_supply(farm, private, item, day):
     of the suppression difference are measured the same way and a bias in the
     forecast largely cancels between them.
     """
+    # NOT cached, deliberately. Our own board changes within the day as we
+    # plant and harvest, so freezing this per day changes behaviour: it broke
+    # the identity test at 21/24 games, mean -288. The opponent's side IS cached
+    # -- we only observe their board, so a per-day forecast off it is the same
+    # approximation their tracker already makes.
     held = int((private.get("shed") or {}).get(item, 0))
     return held + MV_SELF_GAIN * S["oppst"].forecast_production(farm, item, day)
 
