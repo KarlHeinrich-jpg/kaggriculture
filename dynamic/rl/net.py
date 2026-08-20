@@ -14,6 +14,24 @@ how many hands, whether to sell -- and the spatial part of the problem (which
 tile a unit walks to) is already solved by the router, which the policy does not
 touch. A conv tower would spend parameters on structure the scheduler handles.
 
+INITIALISED TO THE IDENTITY, which is the whole design. A randomly initialised
+policy overwrites a heavily tuned scheduler and starts ~70,000 paired margin
+BELOW it (measured: -143,838 against the scheduler's -73,390, 0.0% win rate), so
+it has to climb all the way back before it can add anything. Instead every head
+is zero-initialised with its bias pointed at the action that means "do what the
+scheduler would have done":
+
+  crop_pref   a UNIFORM softmax already gives weight 1.0 per crop, which
+              multiplies the allocator's ENPV by one -- so zero weights and zero
+              bias is exactly the identity.
+  crew_delta  index of 0 in CREW_DELTAS.
+  sell        index of 1.0 in SELL_LEVELS, i.e. offer the scheduler's own qty.
+
+At init the policy is byte-identical to `agent4`, verified by an identity A/B
+that must return exactly +0. Training then starts AT the baseline rather than
+below it, and can only add -- the same additive shape that is the only thing
+that has produced a confirmed gain in this project.
+
 SIZE IS A SHIPPING CONSTRAINT, not a taste. The submission carries its weights,
 so the target is single-digit MB: at the default widths this is ~1.4M
 parameters, about 2.8 MB in fp16. `export_numpy` writes exactly the arrays the
@@ -47,6 +65,23 @@ class DailyNet(nn.Module):
         self.heads = nn.ModuleDict({
             name: nn.Linear(width, n) for name, n in PA.DAILY_HEADS.items()})
         self.value = nn.Linear(width, 1)
+        self.init_identity()
+
+    def init_identity(self, logit=6.0):
+        """Zero the heads and point each bias at the scheduler-identity action."""
+        for name, head in self.heads.items():
+            nn.init.zeros_(head.weight)
+            nn.init.zeros_(head.bias)
+            if name == "crew_delta":
+                head.bias.data[PA.CREW_DELTAS.index(0)] = logit
+            elif name == "buy_land":
+                head.bias.data[0] = logit          # 0 == leave it to the agent
+            elif name == "animal":
+                head.bias.data[PA.ANIMAL_CHOICES.index(None)] = logit
+            # crop_pref stays all-zero: a uniform softmax is weight 1.0, which
+            # multiplies ENPV by one and is therefore already the identity.
+        nn.init.zeros_(self.value.weight)
+        nn.init.zeros_(self.value.bias)
 
     def forward(self, x):
         h = self.norm(F.gelu(self.trunk(x)))
@@ -68,6 +103,17 @@ class SellNet(nn.Module):
         self.norm = nn.LayerNorm(width)
         self.head = nn.Linear(width, len(PA.PRODUCTS) * len(PA.SELL_LEVELS))
         self.value = nn.Linear(width, 1)
+        self.init_identity()
+
+    def init_identity(self, logit=6.0):
+        """Offer the scheduler's own quantity (fraction 1.0) with probability ~1."""
+        nn.init.zeros_(self.head.weight)
+        nn.init.zeros_(self.head.bias)
+        full = PA.SELL_LEVELS.index(1.0)
+        b = self.head.bias.data.view(len(PA.PRODUCTS), len(PA.SELL_LEVELS))
+        b[:, full] = logit
+        nn.init.zeros_(self.value.weight)
+        nn.init.zeros_(self.value.bias)
 
     def forward(self, x):
         h = self.norm(F.gelu(self.trunk(x)))
