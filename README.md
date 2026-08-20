@@ -6,6 +6,12 @@ Agent for the Kaggle **Kaggriculture** simulation competition (2-player,
 **New session? Read `HANDOFF.md` first** — section 0 carries the current state
 and the three rules that override everything else.
 
+**[`MODEL.md`](MODEL.md)** is the mathematical model: the engine's price curve
+and its exact reproduction, the marginal value of a sale, opponent state
+estimation, asset ENPV, and the global resource allocation. It renders on
+GitHub. Every coefficient in it names its calibration data, and section 11
+lists the refuted branches so they are not re-derived.
+
 ---
 
 ## What ships

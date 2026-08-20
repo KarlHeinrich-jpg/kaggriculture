@@ -1294,3 +1294,24 @@ to that shape.
 | + late wheat (hand-coded) | -78,605 | +2,304 | 9.3 |
 | + opportunity allocator | -78,044 | +2,865 | 10.7 |
 | **+ ENPV veto (SHIPPED)** | **-73,390** | **+7,519** | **8.5** |
+
+---
+
+## 25. `MODEL.md` — the mathematics, in one place
+
+The derivations scattered through sections 22-24 are collected in
+[`MODEL.md`](MODEL.md), written as GitHub-rendered LaTeX so the formulas stay
+readable and reviewable rather than living in docstrings.
+
+It covers: the engine's price curve and its exact reproduction; the depth and
+recovery ratio that decide which books can be suppressed at all; the marginal
+value of a sale and the sign of its suppression term; the endogenous realized
+price; exact opponent sales and harvest recovery with the shed-cap and floor
+corrections; both yield rules; asset ENPV; the multi-dimensional knapsack, the
+labour shadow price, bundle ROI and the burn-rate reserve; and the opportunity
+cost that makes the "no-displacement window" fall out of arithmetic.
+
+Section 10 is the calibration table -- every coefficient names the data that
+fixed it. Section 11 is the refuted list, with the pattern that now governs how
+work here should be shaped: **additive or subtractive changes hold, wholesale
+replacements break.**
