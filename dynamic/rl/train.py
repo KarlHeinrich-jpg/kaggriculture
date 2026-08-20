@@ -33,6 +33,16 @@ nets are small enough that per-decision inference is ~1 ms, so batching them
 onto a GPU would need a vectorised environment -- a rewrite with a fidelity risk
 this project has repeatedly paid for.
 """
+import os as _os
+# BLAS THREADS MUST BE PINNED TO 1 BEFORE numpy/torch IS IMPORTED. Each rollout
+# worker runs 4286x256 matmuls and OpenBLAS spawns a thread pool inside every
+# one of the 26 processes. Measured: load average 583 on 52 logical cores, each
+# worker at 220-270% CPU, and 119s an iteration against the ~19s the same work
+# needs single-threaded -- the processes were thrashing, not working.
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+           "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+    _os.environ.setdefault(_v, "1")
+
 import json
 import math
 import multiprocessing as mp
@@ -108,6 +118,9 @@ def _worker_init(weights, snapshot):
     _W["snapshot"] = snapshot
     _W["genome"] = _base_genome()
 
+
+# Workers re-import this module; torch's intra-op pool must be 1 there too.
+torch.set_num_threads(1)
 
 def rollout(job):
     """One PAIRED episode: the same seed from both seats. Returns the two
@@ -224,6 +237,7 @@ def ppo_update(dnet, snet, opt, batches, device, clip=0.2, epochs=3,
 
 
 def main():
+    torch.set_num_threads(8)
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", type=int, default=10000)
