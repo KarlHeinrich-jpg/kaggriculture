@@ -13,7 +13,28 @@ improved in isolation. A hand fix cannot escape that; a search can, because it
 re-adapts every parameter at once. So OPP_PREDICT, MT_TIMING, MT_QUEUE and
 OPP_DUMP_VETO all go into the genome and the search decides.
 
+FITNESS IS A CRN DIFFERENCE, NOT A RAW MARGIN. The first run of this search
+scored each genome by its mean paired margin, and its champion -- checkpointed
+at "-48,821" -- re-measured at +1,405 (t=0.8, 149/288 paired wins) against the
+hand-tuned default. The whole apparent gain was the upward bias of taking a
+running max over noisy seed draws, which is section 5's PBT failure repeating.
+
+The variance arithmetic says why, and how to fix it:
+
+    sd of the raw paired margin      29,783 per game -> 887 paired games needed
+    sd of the CRN-differenced margin  4,193 per game ->  18 paired games needed
+
+to resolve a real ~2,000 effect. Every genome in a generation already plays the
+same seeds, so differencing each one against a FIXED reference genome evaluated
+on those same seeds costs one extra genome slot and cuts the standard deviation
+7.1x. At 15 paired games that is se 1,083 instead of 7,690 -- the difference
+between a search and a random walk. It also makes `best_fit` comparable across
+generations, because every generation's number is measured against the same
+reference.
+
 DO NOT EDIT dynamic/agent3.py OR ANYTHING IT IMPORTS WHILE THIS RUNS.
+Nor this file: the pool is recreated per generation under forkserver, so newly
+spawned workers re-import it.
 
 Original header:
 GA over dynamic/agent2.py, re-run on top of this session's valuation work.
@@ -200,7 +221,10 @@ def main():
     rng = random.Random(20260820)
     pop = [dict(base)] + [mutate(base, rng, 0.4) for _ in range(args.population - 1)]
 
-    best, best_fit, stale = dict(base), -1e18, 0
+    # The reference is the configuration this session shipped. Fitness is
+    # measured against it, so 0 means "no better than what we already have".
+    REF = dict(base)
+    best, best_fit, stale = dict(base), 0.0, 0
     t0 = time.time()
     with open(os.path.join(LOG_DIR, "search.log"), "w") as f:
         f.write("")
@@ -209,19 +233,33 @@ def main():
         if time.time() - t0 > args.hours * 3600:
             print("time budget reached", flush=True); break
         seeds = [rng.randrange(10 ** 6, 2 ** 31 - 1) for _ in range(args.seeds)]
-        jobs = [(i, g, o, s, seat) for i, g in enumerate(pop)
+        # Slot 0 is the fixed reference, replayed on this generation's seeds so
+        # every genome can be differenced against it.
+        evalpop = [REF] + pop
+        jobs = [(i, g, o, s, seat) for i, g in enumerate(evalpop)
                 for o in POOL for s in seeds for seat in (0, 1)]
         with multiprocessing.get_context("forkserver").Pool(args.workers) as pool:
             res = pool.map(play, jobs, chunksize=8)
         paired = {}
         for gid, opp, sd, seat, m, err in res:
             paired.setdefault((gid, opp, sd), []).append(m)
-        fit = {}
+        by_gid = {}
         for (gid, opp, sd), v in paired.items():
             if len(v) == 2 and min(v) > -1e8:
-                fit.setdefault(gid, []).append(sum(v))
-        scored = sorted(((statistics.mean(v), gid) for gid, v in fit.items() if v),
-                        reverse=True)
+                by_gid.setdefault(gid, {})[(opp, sd)] = sum(v)
+        ref_map = by_gid.get(0) or {}
+        if not ref_map:
+            print("reference genome errored; cannot difference", flush=True)
+            break
+        scored = []
+        for gid, m in by_gid.items():
+            if gid == 0:
+                continue
+            shared = [m[k] - ref_map[k] for k in m if k in ref_map]
+            if shared:
+                scored.append((statistics.mean(shared), gid - 1))
+        scored.sort(reverse=True)
+        ref_abs = statistics.mean(ref_map.values())
         if not scored:
             print("all genomes errored", flush=True); break
         gbest, gid = scored[0]
@@ -234,14 +272,17 @@ def main():
             stale += 1
         line = (f"gen {gen:>4} best {gbest:>+12,.0f}  overall {best_fit:>+12,.0f}  "
                 f"median {statistics.median(s for s, _ in scored):>+12,.0f}  "
-                f"stale {stale}  {time.time()-t0:.0f}s")
+                f"ref {ref_abs:>+12,.0f}  stale {stale}  {time.time()-t0:.0f}s")
         print(line, flush=True)
         with open(os.path.join(LOG_DIR, "search.log"), "a") as f:
             f.write(line + "\n")
         with open(PROGRESS, "w") as f:
             f.write(f"# dynamic/ GA progress\n\n{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                     f"- generation {gen}/{args.generations}, {(time.time()-t0)/3600:.2f}h\n"
-                    f"- best paired margin vs 9-agent pool: **{best_fit:+,.0f}**\n"
+                    f"- best CRN-differenced margin vs the shipped default: "
+                    f"**{best_fit:+,.0f}** (0 = no better than what we have)\n"
+                    f"- the reference itself scored {ref_abs:+,.0f} on this "
+                    f"generation's seeds\n"
                     f"- reference on the SAME pool and seeds: shipped "
                     f"tape+market **+12,160**, unmodified kawa **+11,628**, "
                     f"this session's hand-tuned agent2 **-73,390**\n"
