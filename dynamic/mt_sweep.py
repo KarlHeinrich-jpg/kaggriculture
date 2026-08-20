@@ -95,22 +95,18 @@ def variants(base):
     # NOTE: the baseline now has NURSE_LATE=1 by default, so the identity
     # control must switch it OFF explicitly rather than leave it unset.
     import os as _os
-    # The predictor is a much better estimator that measures -18,611. The
-    # suspect is co-adaptation, not the estimator: ENPV_LABOR=8 was calibrated
-    # against a forecast biased LOW by 2.5x, and correcting the bias lowers
-    # every realized price, which lowers ENPV, which makes the veto decline
-    # purchases it used to allow. If that is the cause, re-calibrating its
-    # consumer should recover it.
+    # Decisive test for covariate shift. opp_theta.json is now fit on OUR OWN
+    # games (agent2 in our seat) rather than the tape's, at essentially the same
+    # held-out quality (corr 0.95-0.99, bias near zero). If the -18,611 was
+    # covariate shift it should recover here; if it does not, the conclusion is
+    # that the BIAS was doing useful work.
     P = dict(OPP_PREDICT=1)
     return [
         ("agent2 (base)", _os.path.join(ROOT, "dynamic", "agent2.py")),
-        ("predict, L8 (as-is)", V(**P)),
-        ("predict, L6", V(ENPV_LABOR=6.0, **P)),
-        ("predict, L4", V(ENPV_LABOR=4.0, **P)),
-        ("predict, L2", V(ENPV_LABOR=2.0, **P)),
-        ("predict, L0", V(ENPV_LABOR=0.0, **P)),
-        ("predict, gain .4", V(MV_OPP_GAIN=0.4, **P)),
-        ("predict, veto off", V(ENPV_VETO=0, **P)),
+        ("selffit predict", V(**P)),
+        ("selffit, veto off", V(ENPV_VETO=0, **P)),
+        ("selffit, gain .4", V(MV_OPP_GAIN=0.4, **P)),
+        ("selffit, MV off", V(MV_MARKET=0, **P)),
     ]
 
 

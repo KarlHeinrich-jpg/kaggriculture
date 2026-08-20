@@ -1493,3 +1493,39 @@ Assessed against this codebase rather than in general:
   partition already drops zero tasks at 73 tiles. It is also a wholesale
   replacement of a co-adapted component, which is the shape that has failed six
   times here.
+
+### 27.5 A strictly better opponent estimate makes a strictly worse agent
+
+The fitted predictor is better on every metric that describes an estimator, and
+it measures **-18,502** in play. Two explanations were proposed and both were
+tested and refuted:
+
+| hypothesis | test | result |
+|---|---|---|
+| co-adaptation via `ENPV_LABOR` (calibrated against the biased forecast) | re-calibrate it | L8 -18,611, L6 -19,866, L4 -20,575, L2 -20,084, **L0 -20,400** — monotonically worse |
+| covariate shift (fit on games where the TAPE held our seat) | re-fit on OUR games, same held-out quality | **-18,502**, i.e. unchanged |
+
+Damage channels, isolated: `ENPV_VETO=0` recovers most of it (-18,502 ->
+-5,488) and the remaining -5,488 is the opportunity allocator, whose
+`price_of` is `ctx.unit_price` and therefore also carries `N_them`.
+
+**So the BIAS was doing useful work.** Both consumers -- the veto by hand, the
+allocator by hand, and the portfolio by an earlier GA -- were tuned against a
+forecast that under-reads the opponent by 2.5x. Under-reading their supply makes
+the agent behave as though the books are emptier than they are, which makes it
+produce and sell more aggressively, and aggression is exactly what it lacks.
+Correcting the estimate makes it correctly timid.
+
+This is the sharpest statement of the session's pattern: **it is not that
+replacements are wrong and additions are right. It is that every hand-written
+component here is calibrated against the errors of the ones around it.** A
+component cannot be improved in isolation, however correct the improvement.
+
+The implication is a search, not another hand fix: put the predictor in the
+GENOME and let the search re-adapt its consumers around it. That is what
+`dynamic/search3.py` does.
+
+**Discipline note:** the `MV off` variant in that sweep returned a row
+byte-identical to its sibling because `MV_MARKET` was already 0. Section 21's
+rule applies to my own sweeps too — confirm a parameter is live before spending
+games on it.
