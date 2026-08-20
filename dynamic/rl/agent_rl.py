@@ -617,6 +617,7 @@ DRAG_START_DAY = 0
 # any expansion; it only DECLINES a land purchase the agent was going to make
 # when the tiles it unlocks cannot repay it. Subtractive, which is the shape
 # that has held here.
+SELL_EVERY = 24        # turns between sell-policy refreshes
 LAND_ENPV_VETO = 0
 LAND_USABLE_FRAC = 0.6   # share of a quadrant's 25 tiles we realistically work
 OPP_MODEL = 1
@@ -660,7 +661,7 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "OPP_PREDICT", "OPP_DUMP_VETO", "OPP_DUMP_RATIO",
                 "ZERO_DRAG", "DRAG_MIN_IDLE", "DRAG_ADD_PER_DAY",
                 "DRAG_MAX_TILES", "DRAG_LAND_MULT", "DRAG_START_DAY",
-                "LAND_ENPV_VETO", "LAND_USABLE_FRAC")
+                "LAND_ENPV_VETO", "LAND_USABLE_FRAC", "SELL_EVERY")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -2043,7 +2044,19 @@ def agent(obs):
     shops = tuple(town.get("unlocked_shops") or ())
     opp_farm = farms[1 - player] if len(farms) > 1 else None
     inventory = market_obj.get("inventory") or {}
-    if POLICY is not None and _PDEC[0] is not None:
+    # SELL_EVERY controls the credit-assignment burden, which is the binding
+    # problem in training. Firing every turn gives the sell head 719 decisions
+    # per episode sharing ONE terminal reward, so each advantage estimate is
+    # almost pure noise -- tighten the KL leash and the policy never moves
+    # (p_id 0.993 after 150 iterations), loosen it and the policy walks off a
+    # tuned strategy and loses to a frozen copy of itself (self-play win rate
+    # 50.8% -> 32%). Refreshing once a day is 30 decisions per reward, a 24x
+    # denser signal, and costs little: the sell LEVELS are a standing policy,
+    # not a per-turn reaction, and the per-turn market state still reaches the
+    # decision through price and inventory in the scheduler itself.
+    if (POLICY is not None and _PDEC[0] is not None
+            and (SELL_EVERY <= 1 or (day * 24 + hour) % SELL_EVERY == 0
+                 or _PDEC[0].sell_level is None)):
         from dynamic.rl import policy_api as _PA
         _PDEC[0].sell_level = POLICY.sell(
             _PA.market_vector(obs, farm, private, S["oppst"], day, hour),

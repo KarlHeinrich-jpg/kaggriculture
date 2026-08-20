@@ -40,7 +40,7 @@ for attempt in $(seq 1 "$MAX_RESTARTS"); do
     echo "--- attempt $attempt, ${LEFT_H}h left $RESUME ---" | tee -a "$OUT/run.log"
 
     "$PY" dynamic/rl/train.py --iters 100000 --episodes "$EPISODES" \
-        --workers "$WORKERS" --hours "$LEFT_H" --self_play 0.6 --kl 0.05 \
+        --workers "$WORKERS" --hours "$LEFT_H" --self_play 0.6 --kl "${KL:-0.02}" \
         $RESUME >> "$OUT/train.out" 2>&1
     rc=$?
     echo "train.py exited rc=$rc at $(date -Is)" | tee -a "$OUT/run.log"

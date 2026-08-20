@@ -162,7 +162,7 @@ def rollout(job):
     # taken from the spread actually observed rather than guessed.
     r = (1.0 if paired > 0 else -1.0 if paired < 0 else 0.0)
     r += 0.75 * math.tanh(paired / 120000.0)
-    return (out, r, paired), None
+    return (out, r, paired, opp_name == "__self__"), None
 
 
 def _flatten(trajs, reward, gamma=0.999, lam=0.95):
@@ -357,19 +357,36 @@ def main():
             break
         batches = {"daily": [], "sell": []}
         rewards, paireds = [], []
-        for trajs, r, paired in good:
+        # SEPARATE THE TWO OPPONENT KINDS. Mixed together they are unreadable:
+        # a frozen identity policy scores 0.6*50% + 0.4*0% = 30% overall and
+        # 0.6*0 + 0.4*(-68,847) = -27,539 paired, which is exactly what 150
+        # iterations of "learning nothing" looked like. Worse, the self-play
+        # share varies by +-5 episodes a batch (sd = sqrt(96*0.6*0.4) = 4.8), and
+        # that alone swings the blended win rate several points -- which is what
+        # produced a spurious t=+3.94 "UP" reading.
+        #
+        # Split out, the question is direct: self-play win rate above 50% means
+        # the policy beats the frozen snapshot of itself, i.e. it is improving.
+        sp_res, pool_res = [], []
+        for trajs, r, paired, is_self in good:
             b = _flatten(trajs, r)
             batches["daily"] += b["daily"]
             batches["sell"] += b["sell"]
             rewards.append(r)
             paireds.append(paired)
+            (sp_res if is_self else pool_res).append(paired)
         stats = ppo_update(dnet, snet, opt, batches, device,
                            vf=args.vf, ent=args.ent, kl=args.kl,
                            ref=(dref, sref))
         wins = sum(1 for p in paireds if p > 0)
         wr = 100.0 * wins / len(paireds)
+        sp_wr = (100.0 * sum(1 for p in sp_res if p > 0) / len(sp_res)
+                 if sp_res else float("nan"))
+        pool_wr = (100.0 * sum(1 for p in pool_res if p > 0) / len(pool_res)
+                   if pool_res else float("nan"))
         line = (f"iter {it:>5} winrate {wr:>5.1f}%  paired {statistics.mean(paireds):>+9,.0f}  "
                 f"reward {statistics.mean(rewards):>+5.2f}  "
+                f"selfwr {sp_wr:>5.1f}%  poolwr {pool_wr:>5.1f}%  "
                 f"p_id {stats['p_identity'] / max(1, stats['n_id']):.3f}  "
                 f"samples d{len(batches['daily']):,}/s{len(batches['sell']):,}  "
                 f"{len(errs)} err  {time.time()-t0:.0f}s")
