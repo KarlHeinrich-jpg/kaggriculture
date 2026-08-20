@@ -32,6 +32,14 @@ between a search and a random walk. It also makes `best_fit` comparable across
 generations, because every generation's number is measured against the same
 reference.
 
+THE CHECKPOINT IS CONFIRMED ON FRESH SEEDS. Differencing fixes the variance of
+one genome's score, but selection still takes a MAX over the whole population,
+and the max of 48 noise draws at se 856 sits about 2.2 sigma up -- roughly
++1,900 of pure selection bias. So each generation's winner is re-played against
+the reference on a DISJOINT seed set three times larger, and only the confirmed
+number is checkpointed or compared to the running best. Costs about 12% of a
+generation and makes every saved checkpoint mean what it says.
+
 DO NOT EDIT dynamic/agent3.py OR ANYTHING IT IMPORTS WHILE THIS RUNS.
 Nor this file: the pool is recreated per generation under forkserver, so newly
 spawned workers re-import it.
@@ -263,16 +271,41 @@ def main():
         if not scored:
             print("all genomes errored", flush=True); break
         gbest, gid = scored[0]
-        improved = gbest > best_fit + 1.0
+        # Confirm the generation's winner on seeds it has never been scored on,
+        # so the checkpoint is not the selection bias of a 48-way max.
+        cand = dict(pop[gid])
+        cseeds = [rng.randrange(10 ** 6, 2 ** 31 - 1)
+                  for _ in range(args.seeds * 3)]
+        cjobs = [(i, g, o, sd, seat) for i, g in enumerate([REF, cand])
+                 for o in POOL for sd in cseeds for seat in (0, 1)]
+        with multiprocessing.get_context("forkserver").Pool(args.workers) as pool:
+            cres = pool.map(play, cjobs, chunksize=8)
+        cpaired = {}
+        for cgid, opp, sd, seat, m, err in cres:
+            cpaired.setdefault((cgid, opp, sd), []).append(m)
+        cby = {}
+        for (cgid, opp, sd), v in cpaired.items():
+            if len(v) == 2 and min(v) > -1e8:
+                cby.setdefault(cgid, {})[(opp, sd)] = sum(v)
+        cref, ccand = cby.get(0) or {}, cby.get(1) or {}
+        shared = [ccand[k] - cref[k] for k in ccand if k in cref]
+        confirmed = statistics.mean(shared) if shared else -1e18
+        cse = (statistics.pstdev(shared) / (len(shared) ** 0.5)) if len(shared) > 1 else 0.0
+
+        improved = confirmed > best_fit + 1.0
         if improved:
-            best_fit, best, stale = gbest, dict(pop[gid]), 0
-            json.dump({"genome": best, "fitness": best_fit, "gen": gen},
+            best_fit, best, stale = confirmed, cand, 0
+            json.dump({"genome": best, "fitness": best_fit,
+                       "fitness_se": cse, "n_confirm_paired": len(shared),
+                       "in_generation": gbest, "gen": gen},
                       open(CKPT, "w"), indent=1)
         else:
             stale += 1
-        line = (f"gen {gen:>4} best {gbest:>+12,.0f}  overall {best_fit:>+12,.0f}  "
-                f"median {statistics.median(s for s, _ in scored):>+12,.0f}  "
-                f"ref {ref_abs:>+12,.0f}  stale {stale}  {time.time()-t0:.0f}s")
+        line = (f"gen {gen:>4} in-gen {gbest:>+10,.0f}  confirmed "
+                f"{confirmed:>+10,.0f} (se {cse:>6,.0f}, n={len(shared)})  "
+                f"best {best_fit:>+10,.0f}  median "
+                f"{statistics.median(s for s, _ in scored):>+10,.0f}  "
+                f"stale {stale}  {time.time()-t0:.0f}s")
         print(line, flush=True)
         with open(os.path.join(LOG_DIR, "search.log"), "a") as f:
             f.write(line + "\n")
