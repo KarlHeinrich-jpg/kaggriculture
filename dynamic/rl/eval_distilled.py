@@ -60,7 +60,18 @@ class TorchLinear:
         return {it: PA.SELL_LEVELS[idx[i]] for i, it in enumerate(PA.PRODUCTS)}
 
 
+def _plain(path):
+    import importlib.util
+    _n[0] += 1
+    spec = importlib.util.spec_from_file_location(
+        f"pl_{os.getpid()}_{_n[0]}", os.path.join(ROOT, path))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    return getattr(m, "_submission_entry", None) or m.agent
+
+
 def _agent(kind):
+    if kind.endswith(".py"):
+        return _plain(kind)
     import importlib.util, torch
     from dynamic.rl.linear_policy import LinearDailyNet, LinearSellNet, DEFAULT_INTERACTIONS
     _n[0] += 1
@@ -102,11 +113,13 @@ def play(job):
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 24
     workers = int(sys.argv[2]) if len(sys.argv) > 2 else 12
-    ck = os.path.join(ROOT, "logs", "rl", "distilled.pt")
+    ck = sys.argv[3] if len(sys.argv) > 3 else os.path.join(ROOT, "logs", "rl", "best.pt")
     import random
     rng = random.Random(555111)
     seeds = [rng.randrange(10 ** 6, 2 ** 31 - 1) for _ in range(n)]
-    cands = [("identity (scheduler)", "identity"), ("distilled from tape", "distilled")]
+    cands = [("identity (scheduler)", "identity"), ("RL trained", "distilled"),
+             ("SHIPPED tape+market", "submission/main.py"),
+             ("kawa tape", "opponents/kaggriculture-multi-route-farming-agent.py")]
     jobs = [(l, k, o, s, st) for l, k in cands for o in POOL for s in seeds for st in (0, 1)]
     print(f"{len(jobs):,} games", flush=True)
     with mp.get_context("forkserver").Pool(workers, initializer=_init,

@@ -717,3 +717,202 @@ tiles → more crew → crew costs cash → no cash on days 3–15 → tiles die
 The useful by-product is honest crew sizing. Counting travel, 73 tiles needs 10
 workers where op-turn sizing says 4 — roughly a factor of two, which is what
 `enpv.crew_needed` applies via `TILES_PER_HAND`.
+
+---
+
+## 15. The policy layer
+
+The scheduler solves a **per-decision** argmax. The game is a **sequential**
+problem with a binding cash constraint, and those differ:
+
+$$
+a^{*} = \arg\max_a ENPV(a)
+\qquad\text{vs}\qquad
+\pi^{*} = \arg\max_\pi \mathbb{E}\big[\mathrm{NAV}_T\big]\ \ \text{s.t.}\ \ C_t \ge 0
+$$
+
+The Bellman form shows what the myopic rule drops:
+
+$$
+V_t(C, L) \;=\; \max_a \Big( ENPV(a) \;+\; V_{t+1}\big(C - c_a,\; L + l_a\big) \Big)
+$$
+
+A tile bought on day 3 is worth its own yield **plus the cash it frees to buy
+tiles on day 6**. No per-asset $ENPV$ contains that term, so a greedy allocator
+systematically under-invests — which is the measured shape: our economy matches
+the tape ($86{,}386$ vs $86{,}119$) on **1,132 units against 1,704**.
+
+Nobody can hand-write $V_{t+1}$. That is what the policy layer is for.
+
+### What the policy controls
+
+Not the 72 global parameters — those are what the GA and coordinate descent
+already search, and that space holds only small gains. The policy sets the
+quantities that are **constants or hardcoded orderings** in the scheduler:
+
+$$
+\text{choice}(c) \;=\; \arg\max_c\ \underbrace{w_c(x)}_{\text{learned}} \cdot \underbrace{ENPV_{\text{sched}}(c)}_{\text{derived}}
+$$
+
+$w_c \equiv 1$ recovers the scheduler exactly. **A coefficient is a correction on
+top of the derived value, never a competing answer to it**, and $|w_c - 1|$
+measures how wrong the myopic value was in that state.
+
+---
+
+## 16. White-box policy class
+
+$$
+z_a = w_a^{\top} x + b_a,
+\qquad
+\pi(a \mid x) = \frac{\exp(z_a)}{\sum_{a'} \exp(z_{a'})}
+$$
+
+with $x \in \mathbb{R}^{122}$ — 36 board statistics and 86 market scalars, every
+one named. Both heads are linear, so **every coefficient is a rule**:
+$w[\texttt{our.WHEAT} \to \texttt{STRAWBERRY}] = +0.02$ means one more wheat tile
+raises the strawberry logit by $0.02$.
+
+| | MLP | linear |
+|---|---|---|
+| daily head | 2,404,000 | **2,337** |
+| sell head | ~120,000 | **3,922** |
+| fp16 size | 5.0 MB | **0.01 MB** |
+
+The case is not only interpretability. The measured bottleneck is **variance,
+not capacity**: one terminal reward shared across an episode makes advantages
+mostly noise, and $6{,}259$ coefficients give noise three orders of magnitude
+fewer directions to push than $2{,}524{,}600$.
+
+### Identity initialisation
+
+$$
+W = 0,
+\qquad
+b_a = \lambda \cdot \mathbb{1}[a = a_{\text{sched}}]
+\;\;\Longrightarrow\;\;
+\pi(a_{\text{sched}}) = \frac{e^{\lambda}}{e^{\lambda} + (|A| - 1)}
+$$
+
+$\lambda$ is a **hyperparameter, not a constant**, and getting it wrong costs
+everything:
+
+| $\lambda$ | $\pi(a_{\text{sched}})$ | measured |
+|---|---|---|
+| 6.0 | 0.993 | p_id stuck 0.990–0.993 over **706 iterations** — never moved |
+| 3.0 | 0.868 | p_id moves, self-play 50.0% → 61.5% |
+
+`crop_pref` needs no bias at all: a uniform softmax **is** weight $1.0$, which
+multiplies $ENPV$ by one and is already the identity.
+
+---
+
+## 17. Reward
+
+$$
+r = \operatorname{sign}(\text{paired}) + 0.75\tanh\!\left(\frac{\text{paired}}{120000}\right)
+$$
+
+The first version was $\operatorname{sign} + 0.25\,\mathrm{clamp}(\text{paired}/60000)$, and against this
+pool **both terms pinned** — every episode returned exactly $-1.25$, advantages
+normalised to zero, and PPO had **no gradient at all**. A reward must have
+variance before it can teach anything.
+
+### Dense shaping must be potential-based
+
+$$
+F(s, s') = \gamma\,\Phi(s') - \Phi(s),
+\qquad
+\Phi(s) = \tanh\!\left(\frac{\text{our bank} - \text{their bank}}{60000}\right)
+$$
+
+$F$ telescopes over the episode, so the return shifts by a constant and the
+optimal policy is **provably unchanged** (Ng, Harada & Russell 1999). An
+arbitrary weighted sum of per-turn quantities does not have this property — the
+agent optimises the proxy.
+
+**Deliberately excluded from $\Phi$: asset value and held stock.** The shed caps
+at 100 items and discards overflow, and holding stock for price measured
+$-32{,}749$; rewarding inventory teaches a refuted behaviour.
+
+### Self-play is required for the sign term to carry information
+
+Against the reference pool alone the agent loses ~100% of paired episodes, so
+$\operatorname{sign}(\text{paired})$ is a constant. Playing a frozen snapshot of the current
+policy puts the win rate at 50% **by construction**, which is where a win/loss
+signal has maximum information.
+
+---
+
+## 18. Credit assignment
+
+One terminal reward is shared by every decision in the episode. The sell head
+originally fired every turn:
+
+$$
+719 \ \text{decisions} \ \big/ \ 1 \ \text{reward}
+\;\;\longrightarrow\;\;
+30 \ \text{decisions} \ \big/ \ 1 \ \text{reward}
+\quad (\texttt{SELL\_EVERY}=24)
+$$
+
+a $24\times$ denser signal. Measured: self-play win rate stopped collapsing
+(32% → 46%) and iterations ran 18 s → 10 s.
+
+**Tight and loose leashes are the same failure.** With the MLP, $\mathrm{KL}=0.05$
+froze the policy; $\mathrm{KL}=0.005,\ \mathrm{lr}=10^{-3}$ made it **lose to a frozen copy
+of itself** (self-play 50.8% → 32%). Both are credit assignment: there is no
+setting at which a noisy gradient improves a tuned strategy.
+
+---
+
+## 19. What is refuted at the policy layer
+
+| idea | result |
+|---|---|
+| tape distillation of decision conditions | fits well (lift +10 to +24 pp over majority), plays **−46,972**, $t=-12.97$ |
+| behavioural cloning of raw actions (§21) | 92.8% accuracy, banks **\$288** |
+| action-dropout curriculum on rigid agents | **step, not gradient** — 5% dropout costs the tape −149,914, 50% is no worse |
+| ranking the strong builds into rungs | they span −61,628 to −71,875 at 0–1 wins of 8: ranking noise |
+
+### The distillation result generalises
+
+$$
+P_{\text{tape}}(x) \neq P_{\text{scheduler}}(x)
+\;\;\Longrightarrow\;\;
+\arg\max_a \pi_{\text{tape}}(a \mid x)\ \text{is meaningless on the } x \text{ we visit}
+$$
+
+The tape plants wheat on day 3 because **its** board has 23 producing tiles by
+then; ours has 8. Lowering the dimension of the map — actions → conditions —
+does nothing about the **domain it was fitted on**. DAgger cannot repair this: a
+fixed 719-step action list cannot be asked what it would do with 8 tiles.
+
+### The curriculum has a top, and above it a wall
+
+Action dropout grades **reactive** agents (agent4: −160k → −51k over seven
+rungs) because they re-plan from the observed board daily. It does not grade
+anything schedule-rigid, because a fixed schedule desynchronises from any
+perturbation. So the ladder reaches our own scheduler and then stops:
+
+$$
+\underbrace{\text{rung } 0..6}_{\text{graded}} \;\longrightarrow\;
+\underbrace{\text{9 strong builds}}_{\text{all} \approx -65\text{k}, \ 0\text{–}1 \text{ of } 8}
+$$
+
+That wall is the **83,274** the whole project is stuck behind.
+
+---
+
+## 20. Open problems
+
+1. **Produce profitably above 50 tiles.** Every diagnostic says our economy is
+   tape-equivalent per unit and one third smaller in total. Ten levers refuted
+   (§11), plus zero-drag cash expansion three times (−37,683 / −36,592 /
+   −18,143). The binding term is $V_{t+1}$ in §15, and nothing has reached it.
+2. **A learning signal that survives the noise.** At $\mathrm{sd} \approx 32{,}500$
+   per paired game, resolving a real $+2{,}000$ effect needs ~890 paired games.
+   Every method that scores whole genomes or whole policies on fewer than that
+   has produced champions that evaporated on revalidation.
+3. **A curriculum between agent4 and the tape.** Dropout cannot build it. A dial
+   that weakens a rigid schedule *gracefully* is an open question.
