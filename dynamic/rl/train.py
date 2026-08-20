@@ -113,8 +113,37 @@ def _load_opp(name):
 
 _W = {}
 _RUNGDIR = os.path.join(ROOT, "opponents", "rungs")
+# THE LADDER HAS A TOP, AND ABOVE IT A WALL. Handicapping by action dropout
+# grades our own scheduler smoothly (-160k to -51k over seven rungs) because it
+# re-plans from the observed board every day -- a dropped action just means one
+# tile goes unserviced and tomorrow re-sorts it.
+#
+# It does NOT grade anything schedule-rigid. Measured against their own
+# unhandicapped selves, dropping just 5% of actions costs the kawa tape
+# -149,914, frontier -152,878, 3000-socre -157,758 and strong-barnyard
+# -132,578, and raising the rate to 50% barely changes that. It is a step, not
+# a gradient: a fixed 719-step schedule desynchronises downstream from any
+# perturbation, which is HANDOFF sections 4 and 11 arriving from a new angle.
+#
+# And the strong builds do not grade each OTHER either. Over 8 seeds x both
+# seats they sit between -61,628 and -71,875 with us winning 0 or 1 of 8 against
+# every one, so ordering them is ordering noise.
+#
+# So: seven graded rungs up to our own scheduler, then the full set of real
+# opponents as one final tier. Training against all of them beats training
+# against six, even though the tier cannot be climbed a step at a time.
+FINAL_TIER = [p for p in (
+    "submission/main.py", "deliver/ALT_struct.py",
+    "opponents/kaggriculture-multi-route-farming-agent.py",
+    "opponents/v111-8c4s-economic-core-premium-lead.py",
+    "opponents/kaggriculture-frontier-the-soil-remembers-rain.py",
+    "opponents/kaggriculture-3000-socre.py",
+    "opponents/kaggriculture-rank-your-agent.py",
+    "opponents/strong-barnyard-economist.py",
+) if os.path.exists(os.path.join(ROOT, p))]
+
 LADDER = ([os.path.join("rungs", f[:-3]) for f in
-           sorted(os.listdir(_RUNGDIR), reverse=True)
+           sorted(os.listdir(_RUNGDIR))
            if f.startswith("rung_") and f.endswith(".py")]
           if os.path.isdir(_RUNGDIR) else [])
 
@@ -440,7 +469,11 @@ def main():
             if rng.random() < args.self_play:
                 return "__self__"
             if LADDER and rng.random() < args.curriculum:
-                return LADDER[min(rung[0], len(LADDER) - 1)]
+                if rung[0] < len(LADDER):
+                    return LADDER[rung[0]]
+                # past the graded rungs: everything strong we have, including
+                # our own submitted and historical builds
+                return rng.choice(FINAL_TIER or POOL)
             return rng.choice(POOL)
         jobs = [(rng.randrange(10 ** 6, 2 ** 31 - 1), _pick_opp(), w)
                 for w in range(args.episodes)]
@@ -501,7 +534,7 @@ def main():
             del pool_hist[:-args.smooth]
         if len(pool_hist) >= args.smooth:
             m = statistics.mean(pool_hist)
-            if m >= args.advance_at and rung[0] < len(LADDER) - 1:
+            if m >= args.advance_at and rung[0] < len(LADDER):
                 rung[0] += 1
                 pool_hist.clear()
                 print(f"  -> promoted to rung {rung[0]} "

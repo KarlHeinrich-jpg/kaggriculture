@@ -80,17 +80,46 @@ _m.configure(_p)
 '''
 
 
-def generate(eps_values=(0.75, 0.6, 0.45, 0.3, 0.2, 0.12, 0.06)):
+# THE LADDER NEEDS TWO TIERS, and the first version only had one. Handicapping
+# agent4 tops out AT agent4, which is where the policy already starts -- clearing
+# rung 6 means drawing level with your own baseline, not beating anything. The
+# distance that matters is the 80,210 from there to the shipped tape+market
+# build, and nothing in tier 1 covers it.
+#
+# Tier 2 handicaps the STRONG builds by the same dial, so the ladder continues
+# smoothly from "a badly crippled tape" up to the full-strength article. eps=0.0
+# is the real agent, so the top rung IS our best model: clearing the ladder and
+# beating everything we have become the same statement.
+TIER1 = (0.75, 0.6, 0.45, 0.3, 0.2, 0.12, 0.06)
+TIER2 = (0.55, 0.4, 0.28, 0.18, 0.10, 0.04, 0.0)
+
+
+def generate(eps_values=TIER1, tier2=TIER2):
     os.makedirs(OUTDIR, exist_ok=True)
-    src_path = os.path.join(ROOT, "dynamic", "agent4.py")
     made = []
+    # tier 1: our own scheduler, weakened -- the bottom of the ladder
+    src_path = os.path.join(ROOT, "dynamic", "agent4.py")
     for i, eps in enumerate(eps_values):
-        tag = f"eps{int(eps * 100):03d}"
-        dest = os.path.join(OUTDIR, f"rung_{tag}.py")
+        tag = f"t1_eps{int(eps * 100):03d}"
+        dest = os.path.join(OUTDIR, f"rung_{i:02d}_{tag}.py")
         open(dest, "w").write(TEMPLATE.format(
             src="agent4", eps=eps, keep=round(1 - eps, 2), tag=tag,
             root=ROOT, src_path=src_path, seed=1000 + i,
             configure=CONFIGURE))
+        made.append(dest)
+    # tier 2: the strongest build we have, weakened then restored to full
+    strong = os.path.join(ROOT, "submission", "main.py")
+    if not os.path.exists(strong):
+        strong = os.path.join(ROOT, "opponents",
+                              "kaggriculture-multi-route-farming-agent.py")
+    for j, eps in enumerate(tier2):
+        i = len(eps_values) + j
+        tag = f"t2_eps{int(eps * 100):03d}"
+        dest = os.path.join(OUTDIR, f"rung_{i:02d}_{tag}.py")
+        open(dest, "w").write(TEMPLATE.format(
+            src=os.path.basename(strong), eps=eps, keep=round(1 - eps, 2),
+            tag=tag, root=ROOT, src_path=strong, seed=2000 + j,
+            configure=""))
         made.append(dest)
     return made
 
