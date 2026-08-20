@@ -1736,3 +1736,57 @@ Section 31 is the evidence that the sell head is where the value is: one
 CONSTANT in that branch is worth 88.6% win rate. A state-dependent policy with
 the price slope, the drain rate and the opponent belief interval in front of it
 has strictly more to say there.
+
+---
+
+## 32. Tape distillation fails the same way action cloning did (2026-08-20)
+
+Section 21 recorded behavioural cloning from the tape reaching 92.8% action
+accuracy and banking $288, the failure being covariate shift. The obvious
+response is to clone something lower-dimensional, and that was tried properly:
+`dynamic/rl/distill.py` clones DECISION CONDITIONS at the scheduler's own
+decision points -- which crop to plant, how many hands, whether to buy land,
+which animal, what fraction of holdings to sell -- 30 decisions a day over 122
+NAMED features, with our scheduler still executing every unit move.
+
+The fit is good. Held out BY GAME, lift over the majority class:
+
+| head | model | majority | lift |
+|---|---|---|---|
+| animal | 100.0% | 75.9% | **+24.1** |
+| sell | 91.1% | 76.6% | **+14.5** |
+| crop_pref | 89.7% | 79.3% | **+10.3** |
+| buy_land | 99.1% | 93.1% | +6.0 |
+| crew_delta | 100.0% | 96.6% | +3.4 |
+
+**And it plays 46,972 worse than the scheduler it replaces** (t=-12.97, 14 wins
+to 130 losses over 288 paired games).
+
+The argument for why this would differ from section 21 -- low-dimensional,
+condition-level, executed by our own scheduler so the learner cannot leave the
+expert's trajectory -- is WRONG, and the reason is worth stating exactly. The
+tape plants wheat on day 3 because ITS board has 23 producing tiles by then;
+ours has 8. The rule learned is "plant wheat when our.WHEAT=0.4 and cash=0.1",
+and our scheduler never visits that state. Cloning conditions instead of actions
+lowers the dimension of the map but does nothing about the domain it is fitted
+on:
+
+    P_tape(x) != P_scheduler(x)  =>  argmax_a pi_tape(a|x) is meaningless on
+                                     the x we actually visit
+
+**Do not re-attempt tape initialisation** without first solving the
+distribution mismatch, and note that DAgger cannot: a fixed 719-step action list
+cannot be asked "what would you do with only 8 tiles".
+
+### What this does NOT refute
+
+The white-box linear policy itself is unaffected and is kept. Both heads are now
+linear softmax over named features -- 2,337 + 3,922 = 6,259 coefficients against
+the MLP's 2,524,600, 0.01 MB against 5.0 MB -- with the exact identity
+initialisation preserved, numpy inference matching torch term for term, and
+`explain()` / `rules()` printing the policy as text. The board is compressed to
+36 named statistics (`encode.extract_board_features`), which was the only reason
+the daily head could not be read.
+
+The correct path is that architecture initialised at the SCHEDULER identity
+(-71,384) rather than at the tape (-118,356), with PPO from there.

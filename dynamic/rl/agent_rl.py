@@ -2018,7 +2018,14 @@ def agent(obs):
 
     if POLICY is not None and S["day"] != day:
         from dynamic.rl import encode as _E
-        _PDEC[0] = POLICY.daily(_E.encode(obs, farm, private, opp, S["oppst"],
+        # A white-box policy declares WHITEBOX=True and takes the 122 named
+        # features (36 board statistics + 86 scalars) instead of the 4,286-dim
+        # vector whose bulk is two raw 10x10xC planes. Same decision point, same
+        # interface -- only the representation differs, and only the white-box
+        # one can be read back as rules.
+        _enc = (_E.encode_whitebox if getattr(POLICY, "WHITEBOX", False)
+                else _E.encode)
+        _PDEC[0] = POLICY.daily(_enc(obs, farm, private, opp, S["oppst"],
                                           day, hour))
 
     if ZERO_DRAG and S.get("econ") is not None:
