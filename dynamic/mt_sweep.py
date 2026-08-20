@@ -95,15 +95,22 @@ def variants(base):
     # NOTE: the baseline now has NURSE_LATE=1 by default, so the identity
     # control must switch it OFF explicitly rather than leave it unset.
     import os as _os
+    # The predictor is a much better estimator that measures -18,611. The
+    # suspect is co-adaptation, not the estimator: ENPV_LABOR=8 was calibrated
+    # against a forecast biased LOW by 2.5x, and correcting the bias lowers
+    # every realized price, which lowers ENPV, which makes the veto decline
+    # purchases it used to allow. If that is the cause, re-calibrating its
+    # consumer should recover it.
+    P = dict(OPP_PREDICT=1)
     return [
         ("agent2 (base)", _os.path.join(ROOT, "dynamic", "agent2.py")),
-        ("agent3, all off", V()),
-        ("timing", V(MT_TIMING=1)),
-        ("timing thr 0.5", V(MT_TIMING=1, MT_HOLD_THRESHOLD=0.5)),
-        ("timing thr 3", V(MT_TIMING=1, MT_HOLD_THRESHOLD=3.0)),
-        ("queue", V(MT_QUEUE=1)),
-        ("opp predict", V(OPP_PREDICT=1)),
-        ("timing + queue + predict", V(MT_TIMING=1, MT_QUEUE=1, OPP_PREDICT=1)),
+        ("predict, L8 (as-is)", V(**P)),
+        ("predict, L6", V(ENPV_LABOR=6.0, **P)),
+        ("predict, L4", V(ENPV_LABOR=4.0, **P)),
+        ("predict, L2", V(ENPV_LABOR=2.0, **P)),
+        ("predict, L0", V(ENPV_LABOR=0.0, **P)),
+        ("predict, gain .4", V(MV_OPP_GAIN=0.4, **P)),
+        ("predict, veto off", V(ENPV_VETO=0, **P)),
     ]
 
 

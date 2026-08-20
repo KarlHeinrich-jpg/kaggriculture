@@ -39,18 +39,21 @@ POOL = ["kaggriculture-multi-route-farming-agent",
 _n = [0]
 
 
-def _load(path):
+def _load(path, genome=None):
     import importlib.util
     _n[0] += 1
     spec = importlib.util.spec_from_file_location(f"pf_{_n[0]}", path)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
+    if genome is not None:
+        m.configure(genome)
+        return m.agent
     return getattr(m, "_submission_entry", None) or m.agent
 
 
-def collect(seed, us_path, opp_name, sample_every=2):
+def collect(seed, us_path, opp_name, sample_every=2, genome=None):
     """One game -> [(item, x, y)], y = their actual remaining sales."""
-    me = _load(us_path)
+    me = _load(us_path, genome)
     op = _load(os.path.join(ROOT, "opponents", f"{opp_name}.py"))
     sim = Simulator.new_episode(configuration={"episodeSteps": 720}, seed=seed)
     truth = {}
@@ -96,12 +99,25 @@ def collect(seed, us_path, opp_name, sample_every=2):
 def main():
     n_seeds = int(sys.argv[1]) if len(sys.argv) > 1 else 6
     ridge = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
-    us = os.path.join(ROOT, "dynamic", "agent2.py")
-    if not os.path.exists(us):
+    # WHOSE GAMES THE MODEL IS FIT ON MATTERS, and the first version got this
+    # wrong. It trained on games where the TAPE held our seat, then the model
+    # was deployed in games where agent2/3 holds it. The opponent's remaining
+    # sales depend on the board we create -- our tile count shifts the weed RNG
+    # and therefore the shop draw, and our own selling sets the book they sell
+    # into -- so that is covariate shift, the same failure that made behavioural
+    # cloning bank $288 in section 21. Train on our own games.
+    us_arg = sys.argv[3] if len(sys.argv) > 3 else "self"
+    if us_arg == "tape":
         us = os.path.join(ROOT, "opponents", f"{POOL[0]}.py")
-    # agent2 needs a genome; the tape does not, and what "we" play only shapes
-    # the board the opponent reacts to, so the tape keeps this dependency-free.
-    us = os.path.join(ROOT, "opponents", f"{POOL[0]}.py")
+        genome = None
+    else:
+        us = os.path.join(ROOT, "dynamic", "agent2.py")
+        from route.search import to_params
+        genome = to_params(dict(json.load(open(os.path.join(
+            ROOT, "dynamic", "best_genome.json")))["genome"]))
+        genome["OPP_MODEL"] = 1
+    print(f"training on games where WE are: {os.path.basename(us)}"
+          f"{' (configured)' if genome else ''}", flush=True)
 
     import random
     rng = random.Random(24680)
@@ -109,7 +125,7 @@ def main():
     games = []
     for i, seed in enumerate(seeds):
         for opp in POOL:
-            games.append(collect(seed, us, opp))
+            games.append(collect(seed, us, opp, genome=genome))
         print(f"  seed {i + 1}/{n_seeds} done ({sum(len(g) for g in games):,} rows)",
               flush=True)
 

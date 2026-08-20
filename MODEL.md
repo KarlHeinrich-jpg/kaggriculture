@@ -15,6 +15,9 @@ Implementation map:
 | 6 yields, opportunity cost | `dynamic/opportunity.py` |
 | 7–9 ENPV, knapsack, shadow price | `dynamic/enpv.py` |
 | 10 task value | `dynamic/task_value.py` |
+| 12 sale timing, order queue | `dynamic/market_timing.py` |
+| 13 fitted opponent supply | `dynamic/opp_predict.py` |
+| 14 spatial feasibility | `dynamic/spatial.py` |
 
 ---
 
@@ -596,3 +599,121 @@ The searched genome's parameters are co-adapted. A principled subsystem dropped
 in on top of them breaks that co-adaptation faster than its own correctness
 repays. Every gain came from a change that acts only where the existing policy
 does nothing, or that only declines. **Design new work to that shape.**
+
+---
+
+## 12. Sale timing and the order queue
+
+`_process_market` runs before `_town_consume` within a step, so a sale placed at
+step $s$ is quoted against the inventory *before* that step's drain and the same
+sale one step later is quoted after it:
+
+$$
+q_{s+1} \;=\; q_s \;+\; (\text{our sale}) \;-\; d_{\text{tick}}(i)\cdot\mathbb{1}[\,s \bmod 4 = 0\,]
+$$
+
+Holding across a tick is therefore worth exactly the inventory that tick
+removed, priced at the local slope:
+
+$$
+\text{gain}_i \;=\; \big|P_i'(q)\big| \cdot d_{\text{tick}}(i)
+$$
+
+| $i$ | $\lvert P_i' \rvert$ | $d_{\text{tick}}$ | \$/unit held | in `FRONT_RUN_ITEMS`? |
+|---|---|---|---|---|
+| MILK | 2.098 | 3 | 6.30 | yes |
+| WOOL | 2.322 | 2 | 4.64 | yes |
+| STRAWBERRY | 0.343 | 4 | 1.37 | yes |
+| **MELON** | 1.200 | **0** | **0.00** | **yes — and worth nothing** |
+
+**This ranks the books the opposite way from suppression.** Suppression wants
+the books the town cannot refill ($\rho_i \to 0$); timing wants the ones it
+refills hardest, because those have the large ticks. MELON is $\rho = 0.19$ —
+the best book to *dump* into and the worst to *hold*, and both follow from the
+same $d_{\text{tick}}(\text{MELON}) = 0$.
+
+Holding is capped at 3 steps by the 4-step tick, so it can never become the
+open-ended metering that measured $-32{,}749$.
+
+**Measured: exactly $+0$**, at every threshold, and the order queue likewise.
+The sell gate governs 2–3% of units (79% shed-panic, 19% terminal), panic
+bypasses the hold, and 7 products never exhaust 10 order slots.
+
+---
+
+## 13. Fitted opponent supply
+
+$$
+\theta^{*} \;=\; \arg\min_{\theta}\ \sum_{(obs,\,Q)\,\in\,\mathcal{D}} \mathcal{L}\big(Q,\; g(obs;\theta)\big)
+$$
+
+Ridge least squares, solved in closed form, on eight public features: the
+structural forecast, tracked holdings, the exact harvest rate, the exact sales
+rate, days left, their tiles of this item, and their herd size.
+
+$$
+\hat\theta \;=\; \big(X^{\top}X + \lambda I'\big)^{-1} X^{\top} y,
+\qquad I'_{00} = 0 \ \text{(the bias is not penalised)}
+$$
+
+Held out **by game**, never by row — rows from one game share its board, shop
+draw and opponent:
+
+| $i$ | model bias / $\lvert$err$\rvert$ / corr | structural bias / $\lvert$err$\rvert$ / corr |
+|---|---|---|
+| STRAWBERRY | −0.9 / 11.3 / **0.99** | −136.4 / 136.4 / 0.54 |
+| MELON | −0.9 / 9.0 / **0.96** | −24.3 / 24.3 / 0.75 |
+| MILK | 1.3 / 11.6 / **0.97** | −75.7 / 75.7 / 0.65 |
+| WOOL | 0.5 / 12.5 / **0.92** | −47.7 / 48.0 / 0.80 |
+| WHEAT | 16.1 / 75.1 / **0.75** | −308.1 / 308.1 / **−0.48** |
+
+The $2.5\times$ bias is gone and correlation goes $0.54$–$0.80 \to 0.92$–$0.99$.
+
+**And it measures $-18{,}611$ in play.** A strictly better input to a consumer
+calibrated against the biased one: correcting the bias raises
+$\mathbb{E}[Q_{\text{opp}}]$, which lowers $\bar P$, which lowers ENPV, which
+makes the veto decline purchases it used to allow.
+
+---
+
+## 14. Spatial feasibility
+
+$$
+G = (V, E), \qquad D(u,v) = |u_x - v_x| + |u_y - v_y|
+$$
+
+Manhattan, because movement is unrestricted and LOCKED tiles are passable —
+there is no path search anywhere in the codebase and none is needed.
+
+$$
+L'_{\text{req}}(a,w) = L_{\text{req}}(a) + D(pos_w,\, loc(a)),
+\qquad
+ENPV_{\text{adj}}(a,w) = ENPV(a) - D(pos_w,\, loc(a))\cdot c_{\text{step}}
+$$
+
+The anti-collapse constraint, per worker:
+
+$$
+\sum_{a \in S_w} L_{\text{req}}(a) \;+\; \text{TravelTime}(S_w) \;\le\; L_{\max},
+\qquad \bigcup_w S_w = A_{\text{selected}},\quad S_i \cap S_j = \varnothing
+$$
+
+**Evaluated with the real `partition` and `build_tour`, it never binds:**
+
+```
+73 tiles, 12 workers:  served 73,  dropped 0
+50 tiles, 12 workers:  served 50,  dropped 0
+```
+
+| workers | crop tiles servable | animal tiles servable |
+|---|---|---|
+| 8 | 65 | 37 |
+| 12 | 80 | 52 |
+| 16 | 100 | 67 |
+
+So the 73-tile collapse is not a routing failure. It is the cash chain: more
+tiles → more crew → crew costs cash → no cash on days 3–15 → tiles die unwatered.
+
+The useful by-product is honest crew sizing. Counting travel, 73 tiles needs 10
+workers where op-turn sizing says 4 — roughly a factor of two, which is what
+`enpv.crew_needed` applies via `TILES_PER_HAND`.
