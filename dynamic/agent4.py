@@ -583,6 +583,13 @@ DRAG_START_DAY = 0
 # any expansion; it only DECLINES a land purchase the agent was going to make
 # when the tiles it unlocks cannot repay it. Subtractive, which is the shape
 # that has held here.
+# Price cash flows at the MEASURED shadow price of capital. A dollar in the
+# first ten days is worth 2.00 +- 0.19 at the buzzer against 0.92 +- 0.08 after
+# (dynamic/shadow_price.py, 1,200 paired rollouts, t=+5.29 on the difference),
+# and a per-asset ENPV charges both at one -- that is the V_{t+1} term of
+# MODEL.md section 15. 0 = myopic, 1 = the full measured gap.
+CAPITAL_DISCOUNT = 0.0
+
 LAND_ENPV_VETO = 0
 LAND_USABLE_FRAC = 0.6   # share of a quadrant's 25 tiles we realistically work
 OPP_MODEL = 1
@@ -626,7 +633,8 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "OPP_PREDICT", "OPP_DUMP_VETO", "OPP_DUMP_RATIO",
                 "ZERO_DRAG", "DRAG_MIN_IDLE", "DRAG_ADD_PER_DAY",
                 "DRAG_MAX_TILES", "DRAG_LAND_MULT", "DRAG_START_DAY",
-                "LAND_ENPV_VETO", "LAND_USABLE_FRAC")
+                "LAND_ENPV_VETO", "LAND_USABLE_FRAC",
+                "CAPITAL_DISCOUNT")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -1243,11 +1251,13 @@ def _alloc_role(role, day):
 
     static = 0.0
     if role in OPP.CROPS and day <= OPP.last_plant_day(role):
-        static = OPP.expected_profit(role, day, price_of(role), ALLOC_LABOR)
+        static = OPP.expected_profit(role, day, price_of(role), ALLOC_LABOR,
+                                     discount=CAPITAL_DISCOUNT)
     if ALLOC_MODE == 1 and static > 0.0:
         out = role
     else:
-        cand, profit = OPP.best(day, price_of, ALLOC_LABOR)
+        cand, profit = OPP.best(day, price_of, ALLOC_LABOR,
+                                discount=CAPITAL_DISCOUNT)
         if static > 0.0 and profit <= static:
             out = role
         else:

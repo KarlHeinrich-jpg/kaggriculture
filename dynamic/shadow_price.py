@@ -119,7 +119,8 @@ def main():
     n_seeds = int(sys.argv[1]) if len(sys.argv) > 1 else 6
     workers = int(sys.argv[2]) if len(sys.argv) > 2 else 12
     delta = float(sys.argv[3]) if len(sys.argv) > 3 else 2000.0
-    days = list(range(0, 28, 2))
+    days = [int(x) for x in (sys.argv[4].split(",") if len(sys.argv) > 4
+                             else range(0, 28, 2))]
     import random
     rng = random.Random(90210)
     seeds = [rng.randrange(10 ** 6, 2 ** 31 - 1) for _ in range(n_seeds)]

@@ -1790,3 +1790,115 @@ the daily head could not be read.
 
 The correct path is that architecture initialised at the SCHEDULER identity
 (-71,384) rather than at the tape (-118,356), with PPO from there.
+
+---
+
+## 33. Five ways of asking "is it the decisions?" — all say no (2026-08-20)
+
+A full day spent on the hypothesis that the scheduler picks the wrong actions.
+Five independent attacks, five negatives, and together they locate the problem
+somewhere else entirely.
+
+### 1. Decision trees from the top of the ladder: -116,035, 0 wins in 24
+
+`dynamic/tree/` extracts 1,479 day-rows from 193 replays covering the ELEVEN
+strongest teams we hold games for (VanKoha 126k mean bank, 我的AI是GPT 119k,
+ReCurSiON 118k, HKmgikao 117k, peikopon 116k, tetsuya 113k, mandgeee 112k,
+Thomas Tschinkel 112k, Galaxantic 109k, カワシギ 109k, Eddy Despradel 105k), and
+fits a hand-written depth-3 CART per decision head.
+
+**The fit is genuinely good, and held out BY TEAM** -- rules from ten players
+predicting the eleventh:
+
+| head | leave-one-team-out | majority | lift |
+|---|---|---|---|
+| crop | 86.8% | 62.2% | **+24.6** |
+| hire | 95.1% | 81.2% | **+13.9** |
+| animal | 85.0% | 77.5% | +7.5 |
+| land | 96.8% | 92.0% | +4.8 |
+
+In play it is **-55,671 against the scheduler baseline** (t=-19.5) and **head to
+head against every build we have submitted, -116,035 with 0 wins in 24**. Adding
+the tree takes us from -65,896 to -116,035 against the shipped agent.
+
+This was supposed to differ from section 32, and the argument was explicit: the
+top ladder is ADAPTIVE (section 10 measured 37-65% self-agreement), so cloning
+them clones a function, not a trajectory. **The leave-one-team-out result proves
+the function generalises ACROSS THEM and it still does not transfer to us**,
+which is the sharper form of the lesson:
+
+    P_top(x) overlapping each other  does NOT imply  P_ours(x) in supp P_top
+
+### 2. The distribution distance, measured
+
+Profiling our own states against theirs on producing tiles, strawberry tiles,
+readiness, cash and shed fill:
+
+| | producing | strawberry | cash |
+|---|---|---|---|
+| **us** | **0.384** | **0.378** | **0.350** |
+| nearest (peikopon) | 0.716 | 0.761 | 0.574 |
+| furthest (HKmgikao) | 0.751 | 0.937 | 0.672 |
+
+All eleven cluster together at distance 0.58-0.75 from us while sitting 0.17
+apart from each other. **There is no in-distribution strong player on this
+ladder, because being strong IS being big.** The tree's largest leaf (n=850,
+95% pure) requires `our.STRAWBERRY > 0.700`; our mean is 0.378, so we never
+reach the branch that carries the rule.
+
+### 3. More data cannot fix it — the learning curve is flat
+
+| rows | crop | hire | animal | land |
+|---|---|---|---|---|
+| 134 | 73.3% | 86.4% | 76.5% | 92.0% |
+| 672 | 85.0% | 95.1% | 85.3% | 91.4% |
+| 1,344 | 86.8% | 95.1% | 85.0% | 96.8% |
+
+Saturated from 50% of the data onward: doubling it buys +1.8pp on crop and
+nothing anywhere else, and the failure happens at 86.8%. **Do not download more
+replays for this purpose.** Section 21 already said it -- more on-distribution
+samples say nothing about off-distribution states -- and this is the measurement.
+
+### 4. The shipped MARKET layer does not transfer either: +290 +- 3,900
+
+The shipped build is tape PLUS market overlay, and every experiment before today
+touched only the farming half. `pbt/intervene.py` is a pure wrapper -- it edits
+market orders and never a tile -- so it bolts onto our scheduler unchanged
+(`dynamic/tree/bake_overlay.py`). It is worth +1,611 on the tape.
+
+On our scheduler it is **+290 on a standard error of 3,900**, against every
+rival. The mechanism explains it: the overlay pushes stock into the book ahead
+of the opponent's predicted sale, and it needs stock to push. Section 22
+measured 79% of our units leaving through the shed-panic dump, so by the time
+the overlay wants to act we are empty. **The market layer is an amplifier of the
+tape's production, not a portable gain.**
+
+### 5. The endgame is already optimal, and worth +-600 total
+
+Rollout search on OUR OWN states, branching at day 22 and playing 12 terminal
+policies to the buzzer, 768 rollouts (`dynamic/endgame.py`). Cheap where a
+day-3 rollout is not: 0.1s from day 25 against 0.59s from day 3.
+
+**Nothing beats the current setting.** The best two variants are +0; the whole
+searchable range is ±600, which is 0.9% of the 67,928 deficit. `TERMINAL_STEP`
+700-712 costs -299 (stock unsold), `SHED_PANIC_FRACTION` 0.70 costs -554
+(hoarding hits the 100-item shed cap) -- two independent reproductions of
+section 17's "holding stock for price is catastrophic".
+
+And the premise that the endgame would be in-distribution is **backwards**: the
+distance to the top ladder is 0.40 over days 6-11 and **1.33 over days 18-23**,
+where they work ~74 producing tiles and we work ~40. The endgame is where we
+differ MOST.
+
+### What all five have in common
+
+Not one is a decision-quality problem. Every road ends at the same place, now
+measured from five directions plus the shadow price of section 34: **our farm is
+half the size of theirs, and the difference is set in the first ten days.**
+
+    day 12 producing tiles     us 37        the tape 68
+    cash on hand, days 2-8     us $171-360  the tape $10,300 by day 12
+    lambda(0-9)                2.00 +- 0.19 -- a dollar then is worth two later
+    lambda(>=10)               1.00 +- 0.00 -- and after, worth exactly itself
+
+**The only unrefuted direction with a quantified target is early capital.**

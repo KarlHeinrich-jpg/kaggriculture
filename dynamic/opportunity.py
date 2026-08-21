@@ -111,8 +111,40 @@ def yield_plan(crop, day, fertilized=False):
     return float(units), turns, day + age_done
 
 
+# SHADOW PRICE OF CAPITAL, measured rather than assumed
+# (dynamic/shadow_price.py: clone the engine at day t, inject cash, play both
+# branches to the buzzer with the same myopic agent, difference the banks --
+# that is d NAV_T / d C_t sampled off the real engine, 1,200 paired rollouts).
+#
+#   early, days 0-9   lambda = 2.00 +- 0.19    t vs 1 = +5.36
+#   late,  days >=10  lambda = 0.92 +- 0.08    t vs 1 = -0.95, i.e. exactly 1
+#   difference        +1.07 +- 0.20            t = +5.29
+#
+# A dollar in the first ten days is worth TWO at the buzzer; after that it is
+# worth one. The scheduler prices both at one, which is precisely the V_{t+1}
+# term a per-asset ENPV cannot see (MODEL.md section 15).
+#
+# TWO LEVELS, NOT A CURVE. The per-day shape is real (chi2 19.6 on dof 8) but
+# nine noisy points cannot resolve it -- an earlier attempt interpolated the raw
+# points and encoded the noise, which made every crop unprofitable on day 6
+# because that day's estimate happened to be 4.44 +- 1.19. The level is
+# established at t=5.36; the shape is not, so only the level is shipped.
+#
+# The cash trace explains the whole thing: we hold $171-360 on days 2-8 when
+# capital is worth 2x, and $56,588 on day 24 when it is worth 1x.
+LAMBDA_EARLY = 2.00
+LAMBDA_LATE = 1.00
+LAMBDA_SWITCH_DAY = 10
+
+
+def shadow_price(day, strength=1.0):
+    """lambda(t): what one dollar at day t is worth at the buzzer."""
+    lam = LAMBDA_EARLY if int(day) < LAMBDA_SWITCH_DAY else LAMBDA_LATE
+    return 1.0 + strength * (lam - 1.0)
+
+
 def expected_profit(crop, day, unit_price, c_labor=0.0, travel=0.0,
-                    fertilized=False):
+                    fertilized=False, discount=0.0):
     """E[Profit] of planting `crop` on this tile today, in dollars.
 
         V_self = P(Q) * Y - C_seed - C_labor * H_required
@@ -121,10 +153,20 @@ def expected_profit(crop, day, unit_price, c_labor=0.0, travel=0.0,
     `market_model.sale_value`, and the suppression term rides along inside it,
     so V_self and V_suppress are quoted together.
     """
-    units, turns, _ = yield_plan(crop, day, fertilized)
+    units, turns, day_done = yield_plan(crop, day, fertilized)
     if units <= 0:
         return 0.0
-    return units * unit_price - CROPS[crop]["seed"] - c_labor * (turns + travel)
+    revenue = units * unit_price
+    cost = CROPS[crop]["seed"] + c_labor * (turns + travel)
+    if not discount:
+        return revenue - cost
+    # Cash flows priced at the shadow price of the day they occur. Cost is paid
+    # NOW, revenue arrives at day_done, and early cash is worth multiples of
+    # late cash -- so a long-payback crop planted during the snowball window is
+    # charged for locking capital up, which is exactly the term a myopic ENPV
+    # drops.
+    return (revenue * shadow_price(day_done, discount)
+            - cost * shadow_price(day, discount))
 
 
 def feasible(day, allowed=None, seed_budget=None):
@@ -141,17 +183,20 @@ def feasible(day, allowed=None, seed_budget=None):
     return out
 
 
-def rank(day, price_of, c_labor=0.0, travel=0.0, allowed=None, seed_budget=None):
+def rank(day, price_of, c_labor=0.0, travel=0.0, allowed=None, seed_budget=None,
+         discount=0.0):
     """Every feasible crop, best expected profit first."""
-    rows = [(expected_profit(c, day, price_of(c), c_labor, travel), c)
+    rows = [(expected_profit(c, day, price_of(c), c_labor, travel,
+                             discount=discount), c)
             for c in feasible(day, allowed, seed_budget)]
     rows.sort(key=lambda r: -r[0])
     return rows
 
 
-def best(day, price_of, c_labor=0.0, travel=0.0, allowed=None, seed_budget=None):
+def best(day, price_of, c_labor=0.0, travel=0.0, allowed=None, seed_budget=None,
+         discount=0.0):
     """(crop, profit) of the best feasible planting, or (None, 0.0)."""
-    rows = rank(day, price_of, c_labor, travel, allowed, seed_budget)
+    rows = rank(day, price_of, c_labor, travel, allowed, seed_budget, discount)
     if not rows or rows[0][0] <= 0:
         return None, 0.0
     return rows[0][1], rows[0][0]
