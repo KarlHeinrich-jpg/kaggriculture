@@ -69,6 +69,7 @@ from route.geom import (SHED_SET, SHED_TILES, SPAWN, dist, dist_to_shed,  # noqa
 from route.opponent import OpponentModel  # noqa: E402
 from route.router import TURNS_PER_DAY, Task, Unit, partition, plan_day  # noqa: E402
 from dynamic.router2 import plan_day as plan_day2  # noqa: E402
+from dynamic import assign as ASSIGN  # noqa: E402
 from dynamic.router2 import task_value as _task_value2  # noqa: E402
 from dynamic import market_model as MM  # noqa: E402
 from dynamic.opp_state import OppState  # noqa: E402
@@ -588,8 +589,33 @@ DRAG_START_DAY = 0
 # (dynamic/shadow_price.py, 1,200 paired rollouts, t=+5.29 on the difference),
 # and a per-asset ENPV charges both at one -- that is the V_{t+1} term of
 # MODEL.md section 15. 0 = myopic, 1 = the full measured gap.
+# Fraction of cash the animal block may consume before day OPENING_DAYS.
+# Measured (dynamic/opening.py, 5 seeds, day-0 spend and day-1 tile count):
+#     ours   seed -200    animals -2,400   ->   2 tiles by day 1
+#     tape   seed -1,030  animals -1,800   ->  23 tiles by day 1
+# Both openings run the cash to nearly zero; the difference is entirely what it
+# bought. BUY_ANIMALS_FIRST=0 was already measured at -17,719, but that flips
+# the ORDER, not the BUDGET -- _order_animals still runs first and consumes the
+# cash before _order_seeds sees any. This caps its share instead.
+OPENING_ANIMAL_CAP = 1.0
+OPENING_DAYS = 3
 CAPITAL_DISCOUNT = 0.0
 
+# UNIT-TO-TASK ASSIGNMENT. route/router.py packs tasks by their ANGLE around
+# the shed, which gives compact wedges but minimises nothing -- a task can go to
+# a unit on the far side of the board because it fell next in the angular order.
+#
+# Measured on the real cost function (travel + work), mean of 8 trials:
+#     6 units / 20 tasks   sweep  99   hungarian  90    -9.3%
+#    13 units / 60 tasks   sweep 257   hungarian 216   -16.1%
+#    16 units / 73 tasks   sweep 299   hungarian 259   -13.3%
+# Deadline-first greedy is WORSE than the sweep (it trades distance for urgency).
+#
+# The point is not the saved turns -- section 22 measured crew utilisation at
+# 35% and 0 days over capacity. It is that `_size_crew` sizes the crew TO the
+# task list, hire cost is fib(n), and cash saved in the first ten days is worth
+# 2.00 +- 0.19 at the buzzer (section 34).
+ASSIGN_MODE = "sweep"      # "sweep" | "hungarian" | "greedy"
 LAND_ENPV_VETO = 0
 LAND_USABLE_FRAC = 0.6   # share of a quadrant's 25 tiles we realistically work
 OPP_MODEL = 1
@@ -633,8 +659,8 @@ _GENOME_KEYS = ("MAX_HANDS", "SCHEDULE_DRIVEN", "ANIMAL_DEADLINE",
                 "OPP_PREDICT", "OPP_DUMP_VETO", "OPP_DUMP_RATIO",
                 "ZERO_DRAG", "DRAG_MIN_IDLE", "DRAG_ADD_PER_DAY",
                 "DRAG_MAX_TILES", "DRAG_LAND_MULT", "DRAG_START_DAY",
-                "LAND_ENPV_VETO", "LAND_USABLE_FRAC",
-                "CAPITAL_DISCOUNT")
+                "LAND_ENPV_VETO", "LAND_USABLE_FRAC", "ASSIGN_MODE",
+                "CAPITAL_DISCOUNT", "OPENING_ANIMAL_CAP", "OPENING_DAYS")
 
 
 # Set to raise instead of warn when a sweep passes a key this agent does not
@@ -963,7 +989,11 @@ def _size_crew(tasks, money, farmer_pos, day=0):
         else:
             break
     for n in range(1, cash_cap + 1):
-        _, leftover = partition(tasks, _make_units(n, farmer_pos))
+        _units = _make_units(n, farmer_pos)
+        if ASSIGN_MODE == "sweep":
+            _, leftover = partition(tasks, _units)
+        else:
+            _, leftover = ASSIGN.assign(_units, tasks, ASSIGN_MODE)
         if not leftover:
             return n
     return cash_cap
@@ -981,7 +1011,18 @@ def _plan_day(farm, private, day, board_size):
         # ground nobody will ever water
         S["dropped"] = dropped
     else:
-        tours, _undone = plan_day(units, tasks, shed_stock)
+        if ASSIGN_MODE == "sweep":
+            tours, _undone = plan_day(units, tasks, shed_stock)
+        else:
+            from route.router import build_tour as _bt
+            _asg, _left = ASSIGN.assign(units, tasks, ASSIGN_MODE)
+            tours, _seen = {}, set()
+            for _u in units:
+                _t = _bt(_u, _asg.get(_u.idx, []), shed_stock)
+                tours[_u.idx] = _t
+                for _x in _t["tasks"]:
+                    _seen.add(id(_x))
+            _undone = [t for t in tasks if id(t) not in _seen]
         S["dropped"] = set()
     for tour in tours.values():
         tour["carry_list"] = sorted(tour["carry"].items())
@@ -1705,8 +1746,16 @@ def _market_orders(farm, private, day, hour, prices, shops=(), opp_farm=None,
             c_order = _enpv_rank(("WHEAT", "STRAWBERRY", "MELON", "CARROT",
                                   "TOMATO"), farm, private, day, "crop")
         if BUY_ANIMALS_FIRST:
-            money = _order_animals(orders, money, want, shed, seeds, shed_used,
-                                   a_order)
+            # In the opening the animal block is given only a SHARE of the cash,
+            # so seed is not starved by it. The rest is handed back before the
+            # seed call, which is why this is a budget split and not a reorder:
+            # animals still get first refusal, just not the whole purse.
+            budget = money
+            if day < OPENING_DAYS and OPENING_ANIMAL_CAP < 1.0:
+                budget = money * float(OPENING_ANIMAL_CAP)
+            spent = budget - _order_animals(orders, budget, want, shed, seeds,
+                                            shed_used, a_order)
+            money -= spent
             money = _order_seeds(orders, money, want, shed, seeds, shed_used,
                                  c_order)
         else:

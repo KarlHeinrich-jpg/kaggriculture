@@ -5,7 +5,7 @@
 
 ---
 
-## 0. READ THIS FIRST — state as of 2026-08-19 midday
+## 0. READ THIS FIRST — state as of 2026-08-21 evening
 
 **Ship this:** `submission/main.py` (162,800 bytes, stdlib-only, entry
 `_submission_entry`). Live as Kaggle submission **55614625**. It is the public
@@ -39,14 +39,36 @@ print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
    byte-identical copy of itself wins seat 0 only **15%** of the time, on a mean
    margin of **-$66**. Use **paired margin**: play both seat orders per seed and
    sum them. A true mirror then scores exactly 0. Section 5.
-2. **The tape cannot be edited** — not farm actions, not hires, not even day 0's
-   market line. Every probe collapsed the run. It can only be replaced wholesale,
-   or *selected* differently (section 16). Market orders ARE editable; that is
-   what the whole intervention layer is.
+2. **The tape can now be edited, and you still mostly should not.** As of
+   2026-08-21 the route table is a decision tree (section 4b), so a single key
+   is overridable via `_TR_EDITS`, coherently at all three read sites. What has
+   NOT changed is the measurement: every probe so far collapsed the run —
+   single-step PASS at steps 0-20 costs -6k to -299k, day-0 market edits -7k to
+   -138k. Treat an edit as damage until a paired run says otherwise. Market
+   orders ARE freely editable; that is what the whole intervention layer is.
+   Selecting a different tape also still works (section 16).
 3. **Validate a submission by file path** (`env.run([path, opponent])`), never by
    import. Kaggle resolves a file agent with `get_last_callable`, which walks the
    namespace in **insertion order** — rebinding `agent` in an appended layer does
    *not* move it, so the last *newly defined* callable wins. Section 5.
+
+### What changed on 2026-08-21
+
+The route table is now a **decision tree** and the tape is editable per key —
+section 4b. `submission/v3_tree.py` is the v3 submission with that substitution,
+verified equivalent at every level including the real engine, and **worth
+exactly zero extra points on its own**. It is a substrate for `_TR_EDITS`
+searches, not a candidate. Side-by-side copies in `v3_compare/`.
+
+Nothing was submitted to Kaggle on 2026-08-21. The shipped agent is still
+55614625. Kaggle's API and the open web were both unreachable from this machine
+that day (`api.kaggle.com` SSL EOF; web fetches 403 through the configured
+relay), so the ladder standings below are a **2026-08-19 snapshot**, not live.
+
+The self-play / opponent-pool RL run (`dynamic/rl/train.py`) was **stopped** on
+2026-08-21 after ~21h. It had been flapping rung 6↔7 for hours — 536 promotions
+against 535 demotions, every rung-7 iteration at 0.0% poolwr with 26-41 errors,
+`best.npz` unchanged since 09:05. It produced nothing.
 
 ### Rule 4, learned 2026-08-19 and now the most expensive one
 
@@ -1902,3 +1924,84 @@ half the size of theirs, and the difference is set in the first ten days.**
     lambda(>=10)               1.00 +- 0.00 -- and after, worth exactly itself
 
 **The only unrefuted direction with a quantified target is early capital.**
+
+### 4b. The route table is now a decision tree — v3, 2026-08-21
+
+`submission/v3_tree.py` = `submission/v3_base.py` byte-for-byte plus one
+appended block (`pbt/treeify.py` → `pbt/treeroute.py`), 155,305 → 196,410 bytes.
+The block refits the ten route arrays as a perfect CART over
+`(legacy, label, step)` and rebinds `_kawa_actions` to return a `_TrRoute` proxy
+(`__len__` + `__getitem__`), so ALL THREE readers of the table resolve through
+the tree together — the base lookup, `_trace_actor_action` (current step, weed
+replay) and `_future_sells` (step + 1, pre-empt borrow). Leaves hold
+`(table index, step)`, not actions, so the arrays already in the file are not
+duplicated: the blob is branch structure only.
+
+**Do not re-bake this one.** v3's market layer came from an older
+`pbt/intervene.py` (no `_IV_STRUCT` / `_IV_MIN_PRICE` / `_IV_STAGED`), so
+`route/bake.py` would silently swap it for today's. `treeify.py` copies and
+appends; `route/bake.py` gained a `TREE_ROUTE` param for new builds only.
+
+Side-by-side copies for reading live in `v3_compare/` (tape, tree, the appended
+block alone, and the block with the blob folded).
+
+| check | tool | result |
+|---|---|---|
+| route keys | — | 7,190/7,190 exact |
+| pool games, per-seed final banks | `dynamic/tape/v3_bench.py` | 120/120 identical |
+| self-play `tree_vs_base` paired margin | `v3_bench.py` | **+0**, 0/16 nonzero |
+| self-play `base_vs_base` (identity control, §21) | `v3_bench.py` | **+0**, 0/16 nonzero |
+| real engine, by file path (rule 3) | `dynamic/tape/v3_submit_check.py` | 30/30 DONE/DONE, banks identical |
+| episode wall time | `v3_submit_check.py` | 4.98s vs 4.97s (+0.3%) |
+| Kaggle entry point | `treeify.py --check` | `_treeroute_entry`, 1 required arg |
+
+Two drivers on purpose: `planner.simulate` is ours and fast enough for a
+336-episode sweep, but only `kaggle_environments` scores the competition, so
+only it can answer "is this submittable". Status matters as much as the bank —
+an agent that raises is marked INVALID and forfeits, and a forfeit still
+produces a plausible-looking number.
+
+**The load-bearing test is the one that matters.** Identical output also has an
+innocent explanation — the appended block being dead code — and that would make
+every row above vacuous. So the block was sabotaged on purpose: one `_TR_EDITS`
+PASS at step 30 moved the final bank 76,829 → 55,293. The tree is in the path.
+Any future equivalence claim needs this line or it proves nothing.
+
+Equivalence is a property of a BUILD, not of the generator. The template no
+longer carries verification numbers in a comment (it briefly did, and they were
+kawa's, in a v3 file). Rerun both checks after regenerating.
+
+So section 4 is now narrower than it was. The *table* is editable — per key, via
+`_TR_EDITS`, coherently at all three read sites. What section 4 measured and what
+still stands is that edits are mostly CATASTROPHIC: single-step PASS at steps
+0-20 costs -6k to -299k (`dynamic/tape/leaf_scan.py`), and only 2,133 of 7,190
+keys are reachable (29.7%, 4 of 10 tables ever selected). Steps > 100 are
+untested and are the only place a soft step is likely. **Editability is a
+substrate, not a gain — this ships at v3's score, to the dollar.**
+
+Pool numbers for v3 itself, 100 games (**not** evidence about the tree):
+
+| opponent | games | win | mean margin |
+|---|---|---|---|
+| strong-barnyard-economist | 20 | 100% | +14,119 |
+| kaggriculture-3000-socre | 20 | 100% | +5,983 |
+| kaggriculture-rank-your-agent | 20 | 80% | +7,768 |
+| v111-8c4s-economic-core-premium-lead | 20 | 80% | +7,111 |
+| kaggriculture-multi-route-farming-agent | 20 | 85% | +680 |
+| **total (deduped)** | **100** | **89.0%** | **+7,132** |
+
+`opponents/kaggriculture-ttv1.py` and `opponents/kaggriculture-3000-socre.py`
+are BYTE-IDENTICAL (md5 `694c736a…`). Any round-robin listing both
+double-weights that agent; the row above is deduped, the raw run said 90.8%.
+**Check the pool for duplicates before reading a total.**
+
+**`submission/v3_base.py` arrived truncated** and was repaired. Pasted through
+the terminal, all ten table lines were cut at exactly 4,095 chars. The file
+still looked complete — every `def` and every blob start is at column 0 and
+survived — which is why a grep-level check passed it; that check was wrong. All
+five other builds of this lineage carry those ten lines byte-identically and
+each is a strict extension of the truncated prefix, so restoration was
+unambiguous (verified: 719-step tables, both market blobs, `__version__`,
+`dump=0.8 lead=3` with no `_IV_STRUCT`, `PMB=30 PMFQ=0`). Truncated original at
+`submission/v3_base.py.truncated.bak`. **Check line lengths, not just symbol
+presence, on any agent file that arrives by paste.**

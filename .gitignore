@@ -27,3 +27,6 @@ deliver/*.py
 
 # BC dataset: 37MB, regenerated in ~8s by `python -m planner.bc_data`
 planner/bc/*.npz
+
+# Corrupt paste artifacts kept only as local forensic backups
+*.truncated.bak

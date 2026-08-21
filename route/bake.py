@@ -87,6 +87,15 @@ def bake(params=None, out=OUT, note=None):
         if params.get("TAPE_MAP"):
             from pbt.tapesel import tapesel_src
             f.write(tapesel_src(params["TAPE_MAP"]))
+        if params.get("TREE_ROUTE"):
+            # Score-neutral by construction: the CART is a perfect fit to the
+            # route table, verified at the table, action and play levels. It is
+            # the substrate for per-step edits (`_TR_EDITS`), not a gain. Safe
+            # to append after tapesel because `_kawa_route_label` is resolved at
+            # call time, so whichever definition lands last still wins.
+            from pbt.treeroute import treeroute_src
+            f.write(treeroute_src(
+                (params or {}).get("BASE_OVERRIDE") or BASE))
         # Kaggle resolves a file agent with get_last_callable, which walks the
         # module namespace in INSERTION order. Rebinding `agent` does not move
         # it -- the name was inserted by the base file -- so the last *new*
