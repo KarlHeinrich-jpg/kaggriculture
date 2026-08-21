@@ -1,17 +1,70 @@
-# v3: tape, tree, flat array — side by side
+# v3: tape, tree, flat array, fully expanded — side by side
 
-Three files that are **the same agent**. One stores its 720-turn route as ten
-arrays and indexes them; one stores the identical route as a perfect-fit CART;
-one stores it as an addressable flat array over an explicit state space. Same
-moves, same money, to the dollar. Built and verified 2026-08-21.
+Files that are all **the same agent**, in different representations. One stores
+its 720-turn route as ten compressed blobs; one refits it as a perfect-fit CART;
+one addresses it as a flat array over an explicit state space; one has every
+blob in the file expanded to literal source. Same moves, same money, to the
+dollar. Built and verified 2026-08-21.
 
-| file | bytes | block | what it is |
-|---|---|---|---|
-| `v3_tape.py` | 155,305 | — | the submitted v3, unmodified |
-| `v3_tree.py` | 196,410 | 41,105 | `v3_tape.py` + a CART blob |
-| `v3_flat.py` | 158,663 | **3,358** | `v3_tape.py` + a flat state array ← **use this one** |
-| `tree_block.py` / `tree_block_readable.py` | 41,105 / 3,190 | | the CART block alone |
-| `flat_block.py` | 3,358 | | the flat block alone — **read this one** |
+| file | bytes | what it is |
+|---|---|---|
+| `v3_tape.py` | 155,305 | the submitted v3, unmodified |
+| `v3_tree.py` | 196,410 | `v3_tape.py` + a 41,105 B CART blob |
+| `v3_flat.py` | 158,663 | `v3_tape.py` + a 3,358 B flat state array ← **ship this one** |
+| `v3_flat_expanded.py` | 1,467,202 | flat array **and** all 12 blobs as literals ← **read/edit this one** |
+| `flat_block.py` | 3,358 | the flat block alone — the whole substitution |
+| `market_tapes.py` | 53,144 | just the two market tapes, expanded |
+| `tree_block.py` / `tree_block_readable.py` | 41,105 / 3,190 | the superseded CART block |
+
+## Nothing is compressed any more
+
+`v3_tape.py` carried **twelve** `json.loads(zlib.decompress(base64.b85decode(…)))`
+one-liners. `pbt/expand.py` rewrites all twelve as literal source, one row per
+line with its step number, and touches nothing else:
+
+| blob | rows | read by |
+|---|---|---|
+| `_ACTIONS_{10C4S_3Q, 8C6S_3Q, 6C8S_3Q, 6C12S_4Q_FIRST_YARN, 6C12S_4Q_SECOND_YARN}` | 719 each | the route |
+| `_LEGACY_ACTIONS_…` (same five) | 719 each | the route, legacy layout |
+| `_V17_R5_MARKETS` | 720 | `_v17_r5_counter` |
+| `_V17_MD_MARKETS` | 719 | `_v17_md_counter` |
+
+```python
+_ACTIONS_8C6S_3Q = [
+    {"farmer": ["BUILD_PASTURE"], "hands": [], "market": [["HIRE"], …]},          #   0
+    {"farmer": ["PICKUP", "SHEEP", 1], "hands": [["WEST"], …], "market": […]},    #   1
+```
+
+Blobs are located by **AST**, not regex — any module-level assignment whose
+value contains a `b85decode`/`b64decode` call, whatever it is named and however
+many lines it spans (the route tables are one line each, the market tapes are
+three). A name-based match on `_ACTIONS_` would have silently skipped the market
+pair, which is the half nobody had ever read. Values come from **executing the
+file**, so what is written is what that file produced — not a re-derivation and
+not a snapshot from `logs/`.
+
+The two market guards are live, not vestigial: over 20 pool episodes
+`_v17_r5_counter` changed the action on **16** turns and `_v17_md_counter` on
+**140**, so the gameplay equivalence runs below genuinely exercise both.
+
+### What expansion costs, measured cold
+
+| | compact | expanded |
+|---|---|---|
+| file | 155 KB | 1.46 MB (×9.4) |
+| **cold** import | 0.047 s | **0.387 s** (×8.2) |
+| episode wall, real engine | 4.98 s | 5.36 s (**+7.6 %**) |
+
+**Do not quote the warm number.** Measured with a populated `__pycache__` the
+expanded file imports **73 % faster**, because the 1.5 MB parse is cached to
+`.pyc` while the compact file's zlib+json decode has to run at every import.
+That is an artifact — Kaggle writes the submission and imports it, so the parse
+is paid. `pbt/expand.py --check` now measures in a fresh temp directory only.
+
+So: **ship `v3_flat.py`** (+0.1 % wall time), **read and edit
+`v3_flat_expanded.py`**. Both are equivalent; the expanded one just spends a
+third of a second per episode to be legible. Nothing is near a timeout either
+way, so this is a preference, not a constraint.
 
 **The flat array supersedes the tree.** Both are pure lookup substitutions and
 both verify identical, but the CART was structure for its own sake: 41 KB of
@@ -84,6 +137,23 @@ _FR_EDITS[i] = act    # state i plays this literal action       (novel action)
 
 A re-point is always a legal action and cannot desync the ten arrays. Both
 dicts are consulted by all three readers. Empty, the file is v3 exactly.
+
+### Three editing surfaces, now that the blobs are open
+
+| want to | do | in |
+|---|---|---|
+| change what one state plays, from scratch | edit the row in place: `_ACTIONS_8C6S_3Q[30]` | `v3_flat_expanded.py` |
+| make state *i* play state *j*'s action | `_FR_REMAP[i] = j` | either flat build |
+| give state *i* a novel action | `_FR_EDITS[i] = act` | either flat build |
+
+The first only became possible with expansion, and it is the one to reach for
+when you know *what* you want the agent to do at a step. The other two are for
+search, where the point is to generate candidates programmatically —
+`RouteArray.patch()` writes them without reformatting the rest of the file.
+
+One asymmetry worth knowing: editing a row in place changes that action for
+**every** state that references it, which with the identity array is exactly one
+state — but stops being true the moment `_FR_REMAP` points others at it.
 
 The 7,190 identity ints are **not** written out as a literal — that costs 42,028
 bytes of source to say nothing, more than the tree blob it replaces. The array
@@ -160,15 +230,21 @@ Two drivers, on purpose. `planner.simulate` is ours and is fast enough for a
 216-episode sweep; `kaggle_environments` is what actually scores the
 competition, so only it can answer "is this submittable".
 
-| check | tool | tree | **flat** |
-|---|---|---|---|
-| all route keys | — | 7,190/7,190 | **7,190/7,190** |
-| pool games, per-seed final banks | `v3_bench.py` | 120/120 | **72/72** identical |
-| self-play `*_vs_base`, paired margin | `v3_bench.py` | +0, 0/16 | **+0, 0/12** nonzero |
-| self-play `base_vs_base` (identity control) | `v3_bench.py` | +0, 0/16 | **+0, 0/12** |
-| real engine, by file path | `v3_submit_check.py` | 30/30 | **30/30** DONE/DONE |
-| episode wall time | `v3_submit_check.py` | +0.3% | **+0.1%** |
-| Kaggle entry point | `flatify.py --check` | `_treeroute_entry` | `_flatroute_entry`, 1 arg |
+| check | tool | tree | flat | expanded | flat_expanded |
+|---|---|---|---|---|---|
+| all route keys | — | 7,190/7,190 | 7,190/7,190 | — | 7,190/7,190 |
+| blob values after expansion | `expand.py --check` | — | — | **12/12** | 12/12 |
+| pool games, per-seed final banks | `v3_bench.py` | 120/120 | 72/72 | **72/72** | **72/72** |
+| self-play `*_vs_base`, paired margin | `v3_bench.py` | +0, 0/16 | +0, 0/12 | **+0, 0/12** | **+0, 0/12** |
+| `base_vs_base` (identity control) | `v3_bench.py` | +0, 0/16 | +0, 0/12 | **+0, 0/12** | **+0, 0/12** |
+| real engine, by file path | `v3_submit_check.py` | 30/30 | 30/30 | **30/30** | **30/30** |
+| episode wall time | `v3_submit_check.py` | +0.3% | **+0.1%** | +7.6% | +7.4% |
+| Kaggle entry point | `--check` | `_treeroute_entry` | `_flatroute_entry` | `_submission_entry` | `_flatroute_entry` |
+
+`V3_LAYER=tree|flat|expanded|flat_expanded` selects the build on both harnesses.
+Note the entry point differs: expansion alone leaves `_submission_entry` in
+place because it appends nothing, so the two transformations are independent and
+were verified independently as well as together.
 
 Self-play is scored by **paired margin** — both seat orders per seed, summed —
 never win rate. An agent against a byte-identical copy of itself wins seat 0
@@ -210,13 +286,14 @@ Editability is a substrate, not a gain.
 ## Reproduce
 
 ```bash
-python pbt/flatify.py submission/v3_base.py submission/v3_flat.py --check
+python pbt/expand.py  submission/v3_base.py     submission/v3_expanded.py --check
+python pbt/flatify.py submission/v3_expanded.py submission/v3_flat_expanded.py --check
 python dynamic/tape/route_array.py                    # state space + reachability
-python dynamic/tape/v3_bench.py                       # keys, mirrors, pool identity
-kagg-env/bin/python dynamic/tape/v3_submit_check.py   # kaggle_environments, by path
+
+V3_LAYER=flat_expanded python dynamic/tape/v3_bench.py
+V3_LAYER=flat_expanded ~/kagg-env/bin/python dynamic/tape/v3_submit_check.py
 ```
 
-`V3_LAYER=tree` on either harness verifies the CART build instead. Note that
 `v3_submit_check.py` needs `~/kagg-env` — `kaggle_environments` is not in the
 default interpreter. It is a **local** check and never contacts Kaggle.
 

@@ -49,14 +49,21 @@ sys.path.insert(0, ROOT)
 
 BASE = os.path.join(ROOT, "submission", "v3_base.py")
 
-# Which derived build is under test. `tree` is the CART (pbt/treeify.py), `flat`
-# is the addressable array (pbt/flatify.py) that replaced it. Both are pure
-# lookup substitutions, so both must come back EQUIVALENT; the arm is named
-# "tree" throughout the report either way, because what the row asserts -- this
-# build is the same function as the array -- does not depend on which it is.
+# Which derived build is under test. Every one of these is a pure REPRESENTATION
+# change over the same agent, so every one must come back EQUIVALENT:
+#
+#   tree           the CART blob            pbt/treeify.py   (superseded)
+#   flat           addressable state array  pbt/flatify.py
+#   expanded       all 12 blobs as literals pbt/expand.py
+#   flat_expanded  both of the above
+#
+# The arm is labelled "tree" throughout the report whichever is selected: what
+# the row asserts -- this build is the same function as the base -- does not
+# depend on which representation produced it.
+BUILDS = ("tree", "flat", "expanded", "flat_expanded")
 LAYER = os.environ.get("V3_LAYER", "flat")
-if LAYER not in ("tree", "flat"):
-    raise SystemExit("V3_LAYER must be 'tree' or 'flat', not %r" % LAYER)
+if LAYER not in BUILDS:
+    raise SystemExit("V3_LAYER must be one of %s, not %r" % (", ".join(BUILDS), LAYER))
 TREE = os.path.join(ROOT, "submission", "v3_%s.py" % LAYER)
 
 # Physical cores. CLAUDE.md: never 52 -- the second thread of each core buys
@@ -231,14 +238,21 @@ def main():
 
     if not os.environ.get("V3_SKIP_BUILD"):
         print("=" * 78)
-        print("BUILD  %s, from v3's own ten arrays"
-              % ("fitting the CART" if LAYER == "tree" else "flattening the tape"))
+        print("BUILD  %s, from v3's own tables" % LAYER)
         print("=" * 78)
+        from pbt.expand import expand
+        from pbt.flatify import flatify
+        from pbt.treeify import treeify
+        tmp = os.path.join(ROOT, "submission", "v3_expanded.py")
         if LAYER == "tree":
-            from pbt.treeify import treeify as build
-        else:
-            from pbt.flatify import flatify as build
-        build(BASE, TREE)
+            treeify(BASE, TREE)
+        elif LAYER == "flat":
+            flatify(BASE, TREE)
+        elif LAYER == "expanded":
+            expand(BASE, TREE)
+        else:                                    # flat_expanded: expand, then flatten
+            expand(BASE, tmp)
+            flatify(tmp, TREE)
         print("  %s  %d bytes"
               % (os.path.basename(BASE), os.path.getsize(BASE)))
         print("  %s  %d bytes  (+%d)"

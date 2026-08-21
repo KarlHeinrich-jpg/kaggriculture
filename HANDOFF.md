@@ -73,12 +73,18 @@ was the substrate, and a flat array over `s1 = (legacy*5 + label)*719 + step` is
 a strictly better one: key space and reference space are the same integer space,
 so `_FR_REMAP[i] = j` means "state i plays state j's action" in one int.
 
-Both are **worth exactly zero extra points on their own** — substrates for a
-search, not candidates. Side-by-side copies and full write-up in `v3_compare/`;
-numpy tooling in `dynamic/tape/route_array.py`. There is deliberately **no
-opponent axis** — the opponent enters the eleven guards, not the route; see
-`pbt/flatroute.py`'s docstring for why adding one now makes the search harder
-before it makes the agent better.
+**All twelve blobs are also expandable now** (`pbt/expand.py`): the ten route
+tables and — the half nobody had read — the two market tapes `_V17_R5_MARKETS`
+and `_V17_MD_MARKETS`. `submission/v3_flat_expanded.py` has no compressed data
+in it at all. It costs 8x cold import and +7.6% episode wall, so **ship
+`v3_flat.py`, read and edit `v3_flat_expanded.py`**.
+
+All of these are **worth exactly zero extra points on their own** — substrates
+for a search, not candidates. Side-by-side copies and full write-up in
+`v3_compare/`; numpy tooling in `dynamic/tape/route_array.py`. There is
+deliberately **no opponent axis** — the opponent enters the eleven guards, not
+the route; see `pbt/flatroute.py`'s docstring for why adding one now makes the
+search harder before it makes the agent better.
 
 Nothing was submitted to Kaggle on 2026-08-21. The shipped agent is still
 55614625. Kaggle's API and the open web were both unreachable from this machine
@@ -1954,6 +1960,10 @@ both verified equivalent. **The flat array supersedes the tree.**
 |---|---|---|---|---|
 | `submission/v3_tree.py` | `pbt/treeify.py` → `treeroute.py` | 196,410 | 41,105 B base64 CART | ~13 compares + decode |
 | **`submission/v3_flat.py`** | `pbt/flatify.py` → `flatroute.py` | 158,663 | **3,358 B** plain source | one index |
+| `submission/v3_expanded.py` | `pbt/expand.py` | 1,463,844 | all 12 blobs as literals | unchanged |
+| **`submission/v3_flat_expanded.py`** | both | 1,467,202 | flat array + no blobs at all | one index |
+
+Ship `v3_flat.py`; read and edit `v3_flat_expanded.py`. All four are equivalent.
 
 The CART was structure for its own sake: its leaves were already `(table, step)`
 references, so nothing ever depended on the branch structure, and its only real
@@ -1998,7 +2008,32 @@ harder search before better agent. Condition in the guards, where it is free.
 `pbt/intervene.py` (no `_IV_STRUCT` / `_IV_MIN_PRICE` / `_IV_STAGED`), so
 `route/bake.py` would silently swap it for today's. Both tools copy and append.
 
-Side-by-side copies and the full write-up live in `v3_compare/`.
+**All twelve blobs are now expandable** — `pbt/expand.py` rewrites every
+`json.loads(zlib.decompress(base64.b85decode(...)))` as literal source, one row
+per line with its step number: the ten route tables AND the two market tapes
+`_V17_R5_MARKETS` (720 rows) / `_V17_MD_MARKETS` (719). Blobs are found by
+**AST** — any module-level assign whose value contains a b85/b64 decode call —
+not by name, because a regex on `_ACTIONS_` skips the market pair, which is the
+half nobody had ever read. Values come from *executing the file*, so what is
+written is what that file produced. Both market guards are live: over 20 pool
+episodes `_v17_r5_counter` changed the action on 16 turns, `_v17_md_counter` on
+140, so the gameplay runs do exercise them.
+
+That gives a THIRD editing surface — edit `_ACTIONS_8C6S_3Q[30]` in place, in
+readable source — alongside `_FR_REMAP` (re-point) and `_FR_EDITS` (novel
+action). Reach for the in-place edit when you know what you want the step to do;
+the dicts are for programmatic search.
+
+**Expansion costs 8x cold import** — 0.047s → 0.387s, file 155 KB → 1.46 MB,
+episode wall +7.6% under the real engine. Nothing is near a timeout, so this is
+a preference: ship `v3_flat.py` (+0.1%), read and edit `v3_flat_expanded.py`.
+**Warm `__pycache__` reports expansion as 73% FASTER and that number is a lie** —
+the 1.5 MB parse caches to .pyc while the compact file's zlib decode reruns
+every import. Kaggle writes the file and imports it, so the parse is paid.
+`expand.py --check` measures in a fresh temp dir for exactly this reason.
+
+Side-by-side copies and the full write-up live in `v3_compare/`, including
+`market_tapes.py` — the two market tapes alone, expanded, for reading.
 
 | check | tool | tree | flat |
 |---|---|---|---|
