@@ -40,9 +40,13 @@ print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
    margin of **-$66**. Use **paired margin**: play both seat orders per seed and
    sum them. A true mirror then scores exactly 0. Section 5.
 2. **The tape can now be edited, and you still mostly should not.** As of
-   2026-08-21 the route table is a decision tree (section 4b), so a single key
-   is overridable via `_TR_EDITS`, coherently at all three read sites. What has
-   NOT changed is the measurement: every probe so far collapsed the run —
+   2026-08-21 the route table is a **flat array over an explicit state space**
+   (section 4b), so a single state is overridable via `_FR_REMAP` (re-point) or
+   `_FR_EDITS` (novel action), coherently at all three read sites. Only **2,205
+   of the 7,190 states are reachable** — six of the ten tables are never
+   selected — so search the mask, not the space, and report the mask size with
+   any result. What has NOT changed is the measurement: every probe so far
+   collapsed the run —
    single-step PASS at steps 0-20 costs -6k to -299k, day-0 market edits -7k to
    -138k. Treat an edit as damage until a paired run says otherwise. Market
    orders ARE freely editable; that is what the whole intervention layer is.
@@ -54,11 +58,27 @@ print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
 
 ### What changed on 2026-08-21
 
-The route table is now a **decision tree** and the tape is editable per key —
-section 4b. `submission/v3_tree.py` is the v3 submission with that substitution,
-verified equivalent at every level including the real engine, and **worth
-exactly zero extra points on its own**. It is a substrate for `_TR_EDITS`
-searches, not a candidate. Side-by-side copies in `v3_compare/`.
+The route table is now **addressable** and the tape is editable per state —
+section 4b. Two builds exist and both verify equivalent at every level including
+the real engine; **`submission/v3_flat.py` supersedes `submission/v3_tree.py`**:
+
+| build | block | lookup | why |
+|---|---|---|---|
+| `v3_tree.py` | 41,105 B base64 CART | ~13 compares, decode at first use | first attempt; kept for comparison only |
+| `v3_flat.py` | **3,358 B** plain source | one index, no decode | 12x smaller, editable by inspection |
+
+The CART was structure for its own sake — its leaves were already `(table, step)`
+references, so nothing depended on the branch structure. Its only real product
+was the substrate, and a flat array over `s1 = (legacy*5 + label)*719 + step` is
+a strictly better one: key space and reference space are the same integer space,
+so `_FR_REMAP[i] = j` means "state i plays state j's action" in one int.
+
+Both are **worth exactly zero extra points on their own** — substrates for a
+search, not candidates. Side-by-side copies and full write-up in `v3_compare/`;
+numpy tooling in `dynamic/tape/route_array.py`. There is deliberately **no
+opponent axis** — the opponent enters the eleven guards, not the route; see
+`pbt/flatroute.py`'s docstring for why adding one now makes the search harder
+before it makes the agent better.
 
 Nothing was submitted to Kaggle on 2026-08-21. The shipped agent is still
 55614625. Kaggle's API and the open web were both unreachable from this machine
@@ -1925,59 +1945,121 @@ half the size of theirs, and the difference is set in the first ten days.**
 
 **The only unrefuted direction with a quantified target is early capital.**
 
-### 4b. The route table is now a decision tree — v3, 2026-08-21
+### 4b. The route table is now addressable — v3, 2026-08-21
 
-`submission/v3_tree.py` = `submission/v3_base.py` byte-for-byte plus one
-appended block (`pbt/treeify.py` → `pbt/treeroute.py`), 155,305 → 196,410 bytes.
-The block refits the ten route arrays as a perfect CART over
-`(legacy, label, step)` and rebinds `_kawa_actions` to return a `_TrRoute` proxy
-(`__len__` + `__getitem__`), so ALL THREE readers of the table resolve through
-the tree together — the base lookup, `_trace_actor_action` (current step, weed
-replay) and `_future_sells` (step + 1, pre-empt borrow). Leaves hold
-`(table index, step)`, not actions, so the arrays already in the file are not
-duplicated: the blob is branch structure only.
+Two builds, both `submission/v3_base.py` byte-for-byte plus one appended block,
+both verified equivalent. **The flat array supersedes the tree.**
+
+| build | tool | bytes | block | lookup |
+|---|---|---|---|---|
+| `submission/v3_tree.py` | `pbt/treeify.py` → `treeroute.py` | 196,410 | 41,105 B base64 CART | ~13 compares + decode |
+| **`submission/v3_flat.py`** | `pbt/flatify.py` → `flatroute.py` | 158,663 | **3,358 B** plain source | one index |
+
+The CART was structure for its own sake: its leaves were already `(table, step)`
+references, so nothing ever depended on the branch structure, and its only real
+product was the substrate. A flat array is a strictly better one.
+
+**The state space, written down.** A route decision is a function of exactly
+three things and the tape always knew it:
+
+```
+legacy in {0,1}   _kawa_use_legacy_layout(obs)   per-seat latch, stateful
+label  in {0..4}  _kawa_route_label(obs)         pure
+step   in {0..718}
+s1 = (legacy * 5 + label) * 719 + step            |s1| = 7,190
+```
+
+**Key space and reference space are the same integer space** — `s1` decomposes
+as `table * 719 + step` because the table index *is* `legacy * 5 + label`. So
+identity is `_FR_CODES[i] == i` and there are two edit primitives:
+`_FR_REMAP[i] = j` (state i plays state j's action; one int, always legal) and
+`_FR_EDITS[i] = act` (novel action). The 7,190 identity ints are NOT written out
+— that costs 42,028 bytes of source to say nothing, more than the blob it
+replaces — so the array is `list(range(7190))` plus sparse deviations, still a
+real mutable list at runtime.
+
+Both builds rebind `_kawa_actions` to return a proxy (`__len__` + `__getitem__`)
+so ALL THREE readers resolve together — the base lookup, `_trace_actor_action`
+(current step, weed replay) and `_future_sells` (step + 1, pre-empt borrow). An
+edit is coherent everywhere by construction rather than by remembering to patch.
+
+**No numpy in the agent, numpy in the tooling.** The lookup runs 2,160×/episode
+where boxed numpy scalar indexing is *slower* than list indexing, and stdlib-only
+imports are worth keeping in someone else's sandbox. Vectorised work lives in
+`dynamic/tape/route_array.py` (`RouteArray.load/key/unkey/keys/action/
+fingerprints/diff/measure_reach/patch`).
+
+**No opponent axis, deliberately.** The opponent enters the eleven guards, not
+the route. `(opp, legacy, label, step)` is a one-multiply change if ever
+justified, but it multiplies parameters by |s2| against a fixed-size pool —
+harder search before better agent. Condition in the guards, where it is free.
 
 **Do not re-bake this one.** v3's market layer came from an older
 `pbt/intervene.py` (no `_IV_STRUCT` / `_IV_MIN_PRICE` / `_IV_STAGED`), so
-`route/bake.py` would silently swap it for today's. `treeify.py` copies and
-appends; `route/bake.py` gained a `TREE_ROUTE` param for new builds only.
+`route/bake.py` would silently swap it for today's. Both tools copy and append.
 
-Side-by-side copies for reading live in `v3_compare/` (tape, tree, the appended
-block alone, and the block with the blob folded).
+Side-by-side copies and the full write-up live in `v3_compare/`.
 
-| check | tool | result |
-|---|---|---|
-| route keys | — | 7,190/7,190 exact |
-| pool games, per-seed final banks | `dynamic/tape/v3_bench.py` | 120/120 identical |
-| self-play `tree_vs_base` paired margin | `v3_bench.py` | **+0**, 0/16 nonzero |
-| self-play `base_vs_base` (identity control, §21) | `v3_bench.py` | **+0**, 0/16 nonzero |
-| real engine, by file path (rule 3) | `dynamic/tape/v3_submit_check.py` | 30/30 DONE/DONE, banks identical |
-| episode wall time | `v3_submit_check.py` | 4.98s vs 4.97s (+0.3%) |
-| Kaggle entry point | `treeify.py --check` | `_treeroute_entry`, 1 required arg |
+| check | tool | tree | flat |
+|---|---|---|---|
+| route keys | — | 7,190/7,190 | 7,190/7,190 |
+| pool games, per-seed final banks | `dynamic/tape/v3_bench.py` | 120/120 | 72/72 identical |
+| self-play `*_vs_base` paired margin | `v3_bench.py` | **+0**, 0/16 | **+0**, 0/12 |
+| self-play `base_vs_base` (identity control, §21) | `v3_bench.py` | **+0**, 0/16 | **+0**, 0/12 |
+| real engine, by file path (rule 3) | `v3_submit_check.py` | 30/30 | 30/30 DONE/DONE |
+| episode wall time | `v3_submit_check.py` | +0.3% | +0.1% |
+| Kaggle entry point | `--check` | `_treeroute_entry` | `_flatroute_entry`, 1 arg |
 
-Two drivers on purpose: `planner.simulate` is ours and fast enough for a
-336-episode sweep, but only `kaggle_environments` scores the competition, so
-only it can answer "is this submittable". Status matters as much as the bank —
-an agent that raises is marked INVALID and forfeits, and a forfeit still
+`V3_LAYER=tree|flat` selects the build on both harnesses. `v3_submit_check.py`
+needs `~/kagg-env` — `kaggle_environments` is not in the default interpreter.
+
+Two drivers on purpose: `planner.simulate` is ours and fast, but only
+`kaggle_environments` scores the competition. Status matters as much as the bank
+— an agent that raises is marked INVALID and forfeits, and a forfeit still
 produces a plausible-looking number.
 
 **The load-bearing test is the one that matters.** Identical output also has an
-innocent explanation — the appended block being dead code — and that would make
-every row above vacuous. So the block was sabotaged on purpose: one `_TR_EDITS`
-PASS at step 30 moved the final bank 76,829 → 55,293. The tree is in the path.
-Any future equivalence claim needs this line or it proves nothing.
+innocent explanation — the block being dead code — which would make every row
+above vacuous. Both edit surfaces were sabotaged at a reachable state
+(`(0,'8c6s_3q',30)` = 749), seed 9000 vs strong-barnyard-economist:
 
-Equivalence is a property of a BUILD, not of the generator. The template no
-longer carries verification numbers in a comment (it briefly did, and they were
-kawa's, in a v3 file). Rerun both checks after regenerating.
+```
+flat                                   76,829
++ _FR_EDITS[749] = PASS                55,293
++ _FR_REMAP[749] = key(0,'10c4s',0)    77,557
+```
 
-So section 4 is now narrower than it was. The *table* is editable — per key, via
-`_TR_EDITS`, coherently at all three read sites. What section 4 measured and what
-still stands is that edits are mostly CATASTROPHIC: single-step PASS at steps
-0-20 costs -6k to -299k (`dynamic/tape/leaf_scan.py`), and only 2,133 of 7,190
-keys are reachable (29.7%, 4 of 10 tables ever selected). Steps > 100 are
-untested and are the only place a soft step is likely. **Editability is a
-substrate, not a gain — this ships at v3's score, to the dollar.**
+The first remap attempt pointed at `10c4s_3q` step **30** and returned 76,829,
+unchanged — and that was **not** dead code: `_ACTIONS_10C4S_3Q[30]` is
+byte-identical to `_ACTIONS_8C6S_3Q[30]`, so it asked for nothing. §21 again: an
+identical row can mean **inert**, not neutral. Check which before concluding.
+
+Equivalence is a property of a BUILD, not of the generator. The tree template
+briefly carried verification numbers in a comment and they were *kawa's*, in a
+v3 file. Rerun both checks after regenerating.
+
+**Reachability, measured** (every read instrumented incl. replay and step+1 peek,
+5 opponents × 3 seeds × both seats) — supersedes the earlier 2,133/29.7% figure:
+
+```
+reachable 2,205 / 7,190 (30.7%)
+  legacy=0 10c4s_3q   647 states, steps  72..718
+  legacy=0 8c6s_3q    719 states, steps   0..718    <- the workhorse
+  legacy=1 10c4s_3q   647 states, steps  72..718
+  legacy=1 8c6s_3q    192 states, steps  24..215
+  never selected: 6c8s_3q, 6c12s_4q_{first,second}_yarn, both legacies
+```
+
+**Six of the ten tables are never selected at all.** Search the mask, not the
+space, and report the mask size with any result: "no improvement in 7,190
+states" and "no improvement in 2,205 states" are different claims.
+
+So section 4 is now narrower than it was. The *table* is editable — per state,
+coherently at all three read sites. What section 4 measured and what still
+stands is that edits are mostly CATASTROPHIC: single-step PASS at steps 0-20
+costs -6k to -299k (`dynamic/tape/leaf_scan.py`). Steps > 100 are untested and
+are the only place a soft state is likely. **Editability is a substrate, not a
+gain — this ships at v3's score, to the dollar.**
 
 Pool numbers for v3 itself, 100 games (**not** evidence about the tree):
 

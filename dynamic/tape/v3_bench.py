@@ -48,7 +48,16 @@ sys.path[:] = [p for p in sys.path if os.path.abspath(p or ".") != _HERE]
 sys.path.insert(0, ROOT)
 
 BASE = os.path.join(ROOT, "submission", "v3_base.py")
-TREE = os.path.join(ROOT, "submission", "v3_tree.py")
+
+# Which derived build is under test. `tree` is the CART (pbt/treeify.py), `flat`
+# is the addressable array (pbt/flatify.py) that replaced it. Both are pure
+# lookup substitutions, so both must come back EQUIVALENT; the arm is named
+# "tree" throughout the report either way, because what the row asserts -- this
+# build is the same function as the array -- does not depend on which it is.
+LAYER = os.environ.get("V3_LAYER", "flat")
+if LAYER not in ("tree", "flat"):
+    raise SystemExit("V3_LAYER must be 'tree' or 'flat', not %r" % LAYER)
+TREE = os.path.join(ROOT, "submission", "v3_%s.py" % LAYER)
 
 # Physical cores. CLAUDE.md: never 52 -- the second thread of each core buys
 # nothing here and halves the per-worker cache.
@@ -222,10 +231,14 @@ def main():
 
     if not os.environ.get("V3_SKIP_BUILD"):
         print("=" * 78)
-        print("BUILD  fitting the CART to v3's own ten arrays")
+        print("BUILD  %s, from v3's own ten arrays"
+              % ("fitting the CART" if LAYER == "tree" else "flattening the tape"))
         print("=" * 78)
-        from pbt.treeify import treeify
-        treeify(BASE, TREE)
+        if LAYER == "tree":
+            from pbt.treeify import treeify as build
+        else:
+            from pbt.flatify import flatify as build
+        build(BASE, TREE)
         print("  %s  %d bytes"
               % (os.path.basename(BASE), os.path.getsize(BASE)))
         print("  %s  %d bytes  (+%d)"

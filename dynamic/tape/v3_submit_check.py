@@ -34,7 +34,8 @@ sys.path.insert(0, ROOT)
 from kaggle_environments import make  # noqa: E402
 
 BASE = os.path.join(ROOT, "submission", "v3_base.py")
-TREE = os.path.join(ROOT, "submission", "v3_tree.py")
+LAYER = os.environ.get("V3_LAYER", "flat")       # 'tree' (CART) or 'flat' (array)
+TREE = os.path.join(ROOT, "submission", "v3_%s.py" % LAYER)
 
 OPPS = ["v111-8c4s-economic-core-premium-lead",
         "kaggriculture-3000-socre",
