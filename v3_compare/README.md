@@ -11,6 +11,7 @@ dollar. Built and verified 2026-08-21.
 | `v3_tape.py` | 155,305 | the submitted v3, unmodified |
 | `v3_tree.py` | 196,410 | `v3_tape.py` + a 41,105 B CART blob |
 | `v3_flat.py` | 158,663 | `v3_tape.py` + a 3,358 B flat state array ← **ship this one** |
+| `v3_expanded.py` | 1,463,844 | `v3_tape.py` with all 12 blobs as literals, nothing appended |
 | `v3_flat_expanded.py` | 1,467,202 | flat array **and** all 12 blobs as literals ← **read/edit this one** |
 | `flat_block.py` | 3,358 | the flat block alone — the whole substitution |
 | `market_tapes.py` | 53,144 | just the two market tapes, expanded |

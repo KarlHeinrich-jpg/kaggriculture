@@ -59,13 +59,21 @@ print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
 ### What changed on 2026-08-21
 
 The route table is now **addressable** and the tape is editable per state —
-section 4b. Two builds exist and both verify equivalent at every level including
-the real engine; **`submission/v3_flat.py` supersedes `submission/v3_tree.py`**:
+section 4b. Four derived builds exist, all from `submission/v3_base.py`, and all
+four verify equivalent at every level including the real engine.
+**`submission/v3_flat.py` supersedes `submission/v3_tree.py`**:
 
-| build | block | lookup | why |
-|---|---|---|---|
-| `v3_tree.py` | 41,105 B base64 CART | ~13 compares, decode at first use | first attempt; kept for comparison only |
-| `v3_flat.py` | **3,358 B** plain source | one index, no decode | 12x smaller, editable by inspection |
+| build | bytes | what it adds | wall | use it for |
+|---|---|---|---|---|
+| `v3_base.py` | 155,305 | — the shipped v3, 12 blobs | — | the reference |
+| `v3_tree.py` | 196,410 | 41,105 B base64 CART, ~13 compares | +0.3% | nothing; kept for comparison |
+| `v3_flat.py` | 158,663 | **3,358 B** flat array, one index | **+0.1%** | **ship this** |
+| `v3_expanded.py` | 1,463,844 | all 12 blobs as literals | +7.6% | reading a blob |
+| `v3_flat_expanded.py` | 1,467,202 | both | +7.4% | **read and edit this** |
+
+The two transformations are independent — expansion appends nothing, so
+`v3_expanded.py` still picks `_submission_entry` while both flat builds pick
+`_flatroute_entry` — and were verified separately as well as together.
 
 The CART was structure for its own sake — its leaves were already `(table, step)`
 references, so nothing depended on the branch structure. Its only real product
@@ -196,6 +204,24 @@ pbt/features.py|cluster.py    6-dim opponent features + K-Means (no signal found
 pbt/adaptive.py|adversary.py  per-family counter params (tied with plain best)
 pbt/pool.py|variants.py|train.py   population-based training (random walk, section 5)
 agents/                       every baked variant from every experiment
+
+--- v3 representation work, 2026-08-21 (section 4b) -----------------------
+submission/v3_base.py         the shipped v3, unmodified. 12 blobs, opaque
+submission/v3_tree.py         + CART blob          SUPERSEDED, kept for comparison
+submission/v3_flat.py         + flat state array   SHIP THIS ONE  (+0.1% wall)
+submission/v3_expanded.py     all 12 blobs as literal source
+submission/v3_flat_expanded.py  both               READ AND EDIT THIS ONE (+7.4%)
+
+pbt/flatroute.py|flatify.py   emit + append the flat array layer (_FR_*)
+pbt/expand.py                 expand every blob to literals; finds them by AST
+pbt/treeroute.py|treeify.py   the superseded CART layer (_TR_*)
+dynamic/tape/route_array.py   numpy view of the flat table: keys, diff,
+                              reachability, patch. NEVER imported by an agent
+dynamic/tape/v3_bench.py      equivalence sweep, V3_LAYER=tree|flat|expanded|
+                              flat_expanded. planner.simulate, 26 workers
+dynamic/tape/v3_submit_check.py  the same by FILE PATH under kaggle_environments
+                              (needs ~/kagg-env). Local only, never contacts Kaggle
+v3_compare/                   all five builds side by side + README + market_tapes.py
 ```
 
 ## 3. Engine mechanics that matter
@@ -1953,8 +1979,10 @@ half the size of theirs, and the difference is set in the first ten days.**
 
 ### 4b. The route table is now addressable — v3, 2026-08-21
 
-Two builds, both `submission/v3_base.py` byte-for-byte plus one appended block,
-both verified equivalent. **The flat array supersedes the tree.**
+Four derived builds off `submission/v3_base.py`, all verified equivalent. Three
+are that file byte-for-byte plus one appended block; the fourth (`v3_expanded.py`)
+appends nothing and only rewrites the blobs in place. **The flat array supersedes
+the tree.**
 
 | build | tool | bytes | block | lookup |
 |---|---|---|---|---|
@@ -2035,18 +2063,45 @@ every import. Kaggle writes the file and imports it, so the parse is paid.
 Side-by-side copies and the full write-up live in `v3_compare/`, including
 `market_tapes.py` — the two market tapes alone, expanded, for reading.
 
-| check | tool | tree | flat |
-|---|---|---|---|
-| route keys | — | 7,190/7,190 | 7,190/7,190 |
-| pool games, per-seed final banks | `dynamic/tape/v3_bench.py` | 120/120 | 72/72 identical |
-| self-play `*_vs_base` paired margin | `v3_bench.py` | **+0**, 0/16 | **+0**, 0/12 |
-| self-play `base_vs_base` (identity control, §21) | `v3_bench.py` | **+0**, 0/16 | **+0**, 0/12 |
-| real engine, by file path (rule 3) | `v3_submit_check.py` | 30/30 | 30/30 DONE/DONE |
-| episode wall time | `v3_submit_check.py` | +0.3% | +0.1% |
-| Kaggle entry point | `--check` | `_treeroute_entry` | `_flatroute_entry`, 1 arg |
+| check | tool | tree | flat | expanded | flat_expanded |
+|---|---|---|---|---|---|
+| route keys | — | 7,190/7,190 | 7,190/7,190 | — | 7,190/7,190 |
+| blob values after expansion | `expand.py --check` | — | — | **12/12** | 12/12 |
+| pool games, per-seed final banks | `dynamic/tape/v3_bench.py` | 120/120 | 72/72 | 72/72 | 72/72 |
+| self-play `*_vs_base` paired margin | `v3_bench.py` | **+0**, 0/16 | **+0**, 0/12 | **+0**, 0/12 | **+0**, 0/12 |
+| self-play `base_vs_base` (identity control, §21) | `v3_bench.py` | **+0**, 0/16 | **+0**, 0/12 | **+0**, 0/12 | **+0**, 0/12 |
+| real engine, by file path (rule 3) | `v3_submit_check.py` | 30/30 | 30/30 | 30/30 | 30/30 |
+| episode wall time | `v3_submit_check.py` | +0.3% | +0.1% | +7.6% | +7.4% |
+| Kaggle entry point | `--check` | `_treeroute_entry` | `_flatroute_entry` | `_submission_entry` | `_flatroute_entry` |
 
-`V3_LAYER=tree|flat` selects the build on both harnesses. `v3_submit_check.py`
-needs `~/kagg-env` — `kaggle_environments` is not in the default interpreter.
+`V3_LAYER=tree|flat|expanded|flat_expanded` selects the build on both harnesses.
+`v3_submit_check.py` needs `~/kagg-env` — `kaggle_environments` is not in the
+default interpreter, and it is a LOCAL check that never contacts Kaggle.
+
+**Both edit surfaces were proven load-bearing by sabotage**, at reachable state
+749 = `(0, '8c6s_3q', 30)`, seed 9000 vs `strong-barnyard-economist`: baseline
+76,829 → `_FR_EDITS[749] = PASS` gives 55,293 → `_FR_REMAP[749] = key(0,'10c4s_3q',0)`
+gives 77,557. A *first* remap attempt returned 76,829, unchanged, and that was
+not dead code — `_ACTIONS_10C4S_3Q[30]` is byte-identical to `_ACTIONS_8C6S_3Q[30]`,
+so it asked for nothing. §21 again: an identical row can mean **inert**, not
+neutral. Check which before concluding.
+
+**Reachability, measured with every read instrumented** (both flat readers plus
+the weed replay and the step+1 peek), five-opponent pool × 3 seeds × both seats:
+
+```
+reachable 2,205 / 7,190 states (30.7%)
+  legacy=0  10c4s_3q   647 states, steps  72..718
+  legacy=0  8c6s_3q    719 states, steps   0..718   <- the workhorse
+  legacy=1  10c4s_3q   647 states, steps  72..718
+  legacy=1  8c6s_3q    192 states, steps  24..215
+  never selected: 6c8s_3q, 6c12s_4q_first_yarn, 6c12s_4q_second_yarn (both legacies)
+```
+
+Six of the ten tables are never selected against this pool — 4,985 dead states.
+Search the mask, not the space, and always report the mask size with the result:
+"no improvement in 7,190 states" and "no improvement in 2,205 states" are
+different claims. `RouteArray.measure_reach()` recomputes it for another pool.
 
 Two drivers on purpose: `planner.simulate` is ours and fast, but only
 `kaggle_environments` scores the competition. Status matters as much as the bank
@@ -2122,3 +2177,114 @@ unambiguous (verified: 719-step tables, both market blobs, `__version__`,
 `dump=0.8 lead=3` with no `_IV_STRUCT`, `PMB=30 PMFQ=0`). Truncated original at
 `submission/v3_base.py.truncated.bak`. **Check line lengths, not just symbol
 presence, on any agent file that arrives by paste.**
+
+---
+
+## 36. What a route edit costs: the fidelity curve (2026-08-21)
+
+Section 4b proved the edit surfaces are load-bearing by sabotage — one state set
+to PASS moved a game 76,829 → 55,293. This is the same question asked as a
+curve: blend the route table with a fitted decision tree at a controlled rate
+`p` and sweep it (`dynamic/tape/fidelity.py`, 768 games, 3 opponents × 16 seeds
+× both seats, paired).
+
+| deviation | paired margin | win rate |
+|---|---|---|
+| **0%** | **+7,099** | 67% |
+| **1%** | **−73,448** | 8% |
+| 2% | −179,626 | 0% |
+| 5% | −281,257 | 0% |
+| 100% | −302,365 | 0% |
+
+**About −80,000 per 1% of deviated unit-orders**, and by 5% it is already at 93%
+of the loss from replacing the route entirely. The two measurements agree:
+section 4b's single-state PASS is 1 of 2,205 reachable states, and it cost
+−21,536 on one seed — steeper than this curve's average, which is what a
+load-bearing state looks like.
+
+**Use this as the budget for any edit.** A change that improves one state has to
+beat roughly 80,000 × (deviated fraction) to break even, and `_FR_EDITS` at a
+single reachable state is ~0.05% of the mask. That is why section 4b's remap
+(+728) is a real result and why blanket rewrites are not.
+
+### The corollary: a state-conditional tree cannot replace the route
+
+Asked directly, and worth recording so it is not re-attempted. A depth-9 CART
+over 30 named per-unit features (position, tile state, neighbourhood, day, cash,
+crew, opponent aggregates — no step index), trained on 82,968 unit-turns from
+the tape, held out by game:
+
+    stage 1, op        61.6%      stage 2, movement direction   49.3%
+
+Dropped into the pipeline in place of the route, guards intact:
+**−305,485 paired, 0 wins in 144.** Adding the market overlay changed nothing
+(identical to the digit) because the agent never accumulated stock to sell.
+
+The ceilings behind that, all measured:
+
+| representation | reproduction |
+|---|---|
+| `(label, step, unit)` — the route's OWN index | 83.1% |
+| ...plus weed count | 91.5% |
+| state-conditional, no step | 61.6% / 49.3% |
+
+Even keyed on the route's own index the ceiling is 83.1%, because
+`_weed_repair_action` carries cross-turn state and `_align_hands` depends on
+where hands spawned — neither is in the observation. And 83.1% fidelity sits far
+below −281,257 on the curve above. **The route is not a function of the
+observable state, so no state-conditional representation is equivalent to it.**
+`step` is the only feature that makes a tree equivalent, and a tree keyed on
+`step` is the flat array of section 4b with extra nodes.
+
+### The eleven guards are now separable — `dynamic/tape/pipeline.py`
+
+The route is one of twelve things the agent does. The other eleven are reactive
+guards applied in a fixed order (kawa source 990–1002), three of them stateful.
+`Pipeline` exposes them as named, individually switchable stages delegating to
+the original functions, so fidelity is by construction rather than by
+transcription:
+
+```python
+p = Pipeline()                       # verified 12,942/12,942 fields = 100.00%
+p.disable("r5_counter")              # drop one guard, measure the cost
+p.replace("preempt_shift", ours)     # swap in market_model logic
+```
+
+Measured on one game: the guards leave the farmer order untouched 100% of the
+time, hands 99.9%, market 96.8% — **96.7% of turns are the route verbatim.**
+Order is load-bearing (feed guard before room evacuation; terminal liquidation
+last), and each stateful guard keeps seat-keyed module state, so `_fresh_kawa()`
+gives every Pipeline its own module copy and `reset()` clears it between
+episodes.
+
+**This is the editable surface that is not the route.** `r5_counter` and
+`md_counter` are opponent-specific counters and have never been costed; that
+measurement is not done.
+
+## 37. Files handed over from the desktop — `incoming/` (2026-08-21)
+
+Uploaded, not yet graded. Nothing is imported by any agent.
+
+```
+incoming/8.21kaggriculture.py                    1,442 KB
+incoming/submission8.18.v3 (1).py                  153 KB   possibly 55600561
+incoming/kaggriculture-precomputed-schedule-policy.ipynb  1,772 KB
+incoming/kaggriculture-conomic-cut.md                4 KB
+incoming/终局卖出策略.md                            12 KB
+incoming/终局雇佣和移动规划.txt                       0 KB   <- transfer failed, re-send
+incoming/参考代码/                                        13 public notebooks
+```
+
+**Grade before promoting to `opponents/`.** Section 33 graded 117 agents already
+on disk and found exactly two in the band we win 20–80% of; an ungraded file
+silently changes the pool every result is measured against.
+
+`submission8.18.v3 (1).py` is worth checking first. If it is submission
+55600561, it scored **2630.9** on the ladder against 1828.3 for the shipped
+55614625 — the contradiction section 0 records and nobody has explained. The
+file makes a direct comparison possible for the first time.
+
+Two of the endgame notes overlap a measurement already on file: twelve terminal
+policies were swept by rollout and the entire searchable range was ±600, with
+`SHED_PANIC_FRACTION=0.70` costing −554. If the notes propose something outside
+that range, that is the experiment worth running.
