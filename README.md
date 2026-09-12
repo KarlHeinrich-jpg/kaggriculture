@@ -1,39 +1,40 @@
 # Kaggriculture
 
-Agent for the Kaggle **Kaggriculture** simulation competition (2-player,
-720 turns, most money wins). Submission deadline 2026-09-30.
+这是 Kaggle **Kaggriculture** 的完全白盒实现（2-player、720 turns）。当前
+生产架构只依赖每一步的 observation、公开引擎规则和自身跨回合状态；不读取
+replay、action tape、seed、episode id、对手身份、榜单排名或拟合参数。
 
-**New session? Read `HANDOFF.md` first** — section 0 carries the current state
-and the three rules that override everything else.
-
-**[`MODEL.md`](MODEL.md)** is the mathematical model: the engine's price curve
-and its exact reproduction, the marginal value of a sale, opponent state
-estimation, asset ENPV, and the global resource allocation. It renders on
-GitHub. Every coefficient in it names its calibration data, and section 11
-lists the refuted branches so they are not re-derived.
+**新会话先读 [`HANDOFF.md`](HANDOFF.md)**；数学模型和模块边界分别见
+[`MODEL.md`](MODEL.md) 与 [`WHITEBOX_ARCHITECTURE.md`](WHITEBOX_ARCHITECTURE.md)。
 
 ---
 
 ## What ships
 
-`submission/main.py` — 155 KB, stdlib-only, entry `_submission_entry`.
+- `whitebox/agent.py`：模块化生产入口 `_whitebox_entry`。
+- `whitebox/versions/v204_retained_land_commitment.py`：当前 V204 白盒包装器，
+  协同资本、任务/路线、现金流、市场和终局证书。
+- `submission/whitebox_v204.py`：由 `scripts/package_whitebox.py` 生成的单文件
+  提交包，只内嵌可审计的 `whitebox/` 与 `route/` 源码。
 
-It is the public `multi-route-farming-agent` ("kawa") 720-step tape, **unmodified**,
-plus one appended layer of our own: `pbt/intervene.py`, which dumps 80% of held
-stock three turns ahead of the opponent's predicted sale, on
-MELON/MILK/STRAWBERRY/WOOL/FERTILIZER.
+V204 是当前发布的白盒研究版本，并非已宣称晋级的胜率保证；V214/V215 仅作
+研究对照，不替换 V204 生产基线。
 
-Rebuild it with:
+重新生成当前白盒提交包：
 
 ```bash
-/home/yilewang/kagg-env/bin/python -c "
-import sys; sys.path.insert(0,'.')
-from route.bake import bake
-print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
-            'INTERVENE':1,'IV_DUMP_FRAC':0.8,'IV_LEAD':3,'IV_FERT':1}))"
+/home/yilewang/kagg-env/bin/python scripts/package_whitebox.py \
+  --entry whitebox.versions.v204_retained_land_commitment \
+  --callable whitebox_v204_retained_land_commitment \
+  --output submission/whitebox_v204.py
 ```
 
-## Results
+## Historical tape-era measurements (not production)
+
+The table below is retained only for provenance. It describes the old tape
+lineage and must not be imported by the current runtime. Public-state-router
+notebooks were used to derive rule-level hypotheses (capacity, route feasibility,
+and state repair), never as an action source.
 
 ### Ladder
 
@@ -78,54 +79,44 @@ repayment/volume conservation, staged dumping, near-mirror gating, wheat
 starvation squeeze, structural yield forecast, floor-price gate, sell-slot
 reordering, and every attempt to touch the tape.
 
-## Layout
+## Layout and reusable evaluation
 
 ```
-submission/main.py      the file to submit
-HANDOFF.md              full state, engine mechanics, measurement rules, pitfalls
-opponents/              15 public agents, 10 loadable; 9 form the evaluation pool
-replays/                downloaded ladder replays (git-ignored, ~30 MB each)
+whitebox/               visible-state policy modules, equations and tests
+whitebox/versions/      versioned white-box wrappers (V204 is current)
+route/router.py         deterministic multi-worker daily route solver
+route/match.py          shared seeded match loader and result object
+arena.py                paired-seat A/B harness with common random numbers
+scripts/package_whitebox.py   self-contained bundle generator
+scripts/audit_whitebox_runtime.py  AST closure audit
+submission/whitebox_v204.py     generated Kaggle entry
 
-pbt/intervene.py        the market layer — the entire measured edge
-pbt/extract_tape.py     replay -> 719-step tape -> runnable agent
-pbt/agreement.py        is an opponent a replayable tape, or adaptive?
-pbt/build_pool.py       ladder crawl: teamId -> submissions -> episodes
-route/bake.py           assembles submission/main.py from base tape + layers
-route/opponent.py       exact opponent-sales inference (validated to 0 error)
-route/tournament.py     round-robin harness
-route/batch.py          fixed-matchup batch scorer
-
-route/agent.py|router.py|geom.py    our own planner — see "self-built" below
-pbt/{tapesel,tape_edit,recover,features,cluster,adaptive,adversary}.py
-                        experiments, each with its measured verdict in HANDOFF
+incoming/, archive/, dynamic/tape/ and legacy files are offline research
+material. They are not reachable from the production bundle and are excluded
+from the white-box packaging path.
 ```
 
 ## The self-built planner
 
-`route/` is a complete agent of our own: an offline-searched plan (tile roles,
-crew size, purchase timing) executed through a daily routing solver
-(angular-sweep partition + nearest-neighbour/2-opt tour). It solves movement
-well — 31% of turns against kawa's 43% — but loses on economy.
+`route/router.py` is the reusable daily routing solver: it assigns rule-derived
+tasks to workers and orders stops with deterministic nearest-neighbour/2-opt
+logic. It is called by the white-box planner online; no offline route or action
+array is loaded.
 
 Best measured: **-8,192 paired margin** against the reference pool after 124
 generations, improved from -34,720. Still negative; it does not beat kawa.
 Checkpoints in `route/checkpoints/`.
 
-It is kept because it is the only line that does not depend on anyone else's
-tape, and because the ladder offers no better tape to copy — every strong player
-is either running kawa's public tape already or is adaptive and cannot be
-extracted (`pbt/agreement.py` measures which).
+The old tape-era planner and opponent pool remain only as historical diagnostics;
+they are not part of the production import closure.
 
-## Reproducing anything
+## Reproducing checks
 
 ```bash
-kaggle competitions submissions kaggriculture
-kaggle competitions episodes <SUBMISSION_ID>
-kaggle competitions replay <EPISODE_ID> -p replays/
-python -m pbt.extract_tape replays/<file>.json <seat> out.py
-python -m route.tournament --workers 26 --include-tuned
+/home/yilewang/kagg-env/bin/python scripts/audit_whitebox_runtime.py \
+  --entry whitebox.versions.v204_retained_land_commitment \
+  --callable whitebox_v204_retained_land_commitment
+/home/yilewang/kagg-env/bin/python -m unittest discover -s whitebox -p 'test_*.py'
+/home/yilewang/kagg-env/bin/python -m compileall -q whitebox route planner arena.py
+git diff --check
 ```
-
-Real seed is at `info.seed` in the replay, so any ladder game reproduces
-locally. **Actions live at `steps[1:]`** — `steps[0]` is the initial state and
-carries no action, which is why tapes are 719 long.

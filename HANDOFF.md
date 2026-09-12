@@ -1,2290 +1,310 @@
-# Kaggriculture — handoff
-
-**Goal:** gold in the Kaggle *Kaggriculture* simulation competition (2-player,
-720 turns, most money wins). Submission deadline 2026-09-30.
-
----
-
-## 0. READ THIS FIRST — state as of 2026-08-21 evening
-
-**Ship this:** `submission/main.py` (162,800 bytes, stdlib-only, entry
-`_submission_entry`). Live as Kaggle submission **55614625**. It is the public
-`multi-route-farming-agent` ("kawa") tape plus three appended layers:
-`pbt/intervene.py` (market intervention), `IV_STRUCT` (structural sale forecast),
-and a one-bucket correction to kawa's tape-selection rule.
-
-Rebuild:
-```bash
-cd /home/yilewang/kaggriculture && /home/yilewang/kagg-env/bin/python -c "
-import sys; sys.path.insert(0,'.')
-from route.bake import bake
-print(bake({'_PREEMPT_MIN_FUTURE_QUANTITY':0,'_PREEMPT_MAX_BATCH':30,
-            'INTERVENE':1,'IV_DUMP_FRAC':0.7,'IV_LEAD':3,'IV_FERT':1,
-            'IV_STRUCT':1,'IV_MIN_PRICE':0.20,
-            'TAPE_MAP':['6c12s_4q_second_yarn','6c12s_4q_second_yarn',
-                        '6c8s_3q','10c4s_3q','8c6s_3q']}))"
-```
-
-### Submissions (Kaggle keeps only the latest 2 active)
-
-| id | what | real-engine gain | ladder |
-|---|---|---|---|
-| **55614625** | + bucket-0 tape swap | **+858** vs 55612771 | active, converging |
-| **55612771** | + IV_STRUCT, dump .70, price gate .20 | +670 vs 55600561 | active, 24/27 (89%) |
-| 55600561 | kawa + intervene (2026-08-18) | — | inactive, peaked 2630.9, 65/84 (77%) |
-
-### Three rules that override everything else
-
-1. **Never score same-tape matchups by win rate.** An agent against a
-   byte-identical copy of itself wins seat 0 only **15%** of the time, on a mean
-   margin of **-$66**. Use **paired margin**: play both seat orders per seed and
-   sum them. A true mirror then scores exactly 0. Section 5.
-2. **The tape can now be edited, and you still mostly should not.** As of
-   2026-08-21 the route table is a **flat array over an explicit state space**
-   (section 4b), so a single state is overridable via `_FR_REMAP` (re-point) or
-   `_FR_EDITS` (novel action), coherently at all three read sites. Only **2,205
-   of the 7,190 states are reachable** — six of the ten tables are never
-   selected — so search the mask, not the space, and report the mask size with
-   any result. What has NOT changed is the measurement: every probe so far
-   collapsed the run —
-   single-step PASS at steps 0-20 costs -6k to -299k, day-0 market edits -7k to
-   -138k. Treat an edit as damage until a paired run says otherwise. Market
-   orders ARE freely editable; that is what the whole intervention layer is.
-   Selecting a different tape also still works (section 16).
-3. **Validate a submission by file path** (`env.run([path, opponent])`), never by
-   import. Kaggle resolves a file agent with `get_last_callable`, which walks the
-   namespace in **insertion order** — rebinding `agent` in an appended layer does
-   *not* move it, so the last *newly defined* callable wins. Section 5.
-
-### What changed on 2026-08-21
-
-The route table is now **addressable** and the tape is editable per state —
-section 4b. Four derived builds exist, all from `submission/v3_base.py`, and all
-four verify equivalent at every level including the real engine.
-**`submission/v3_flat.py` supersedes `submission/v3_tree.py`**:
-
-| build | bytes | what it adds | wall | use it for |
-|---|---|---|---|---|
-| `v3_base.py` | 155,305 | — the shipped v3, 12 blobs | — | the reference |
-| `v3_tree.py` | 196,410 | 41,105 B base64 CART, ~13 compares | +0.3% | nothing; kept for comparison |
-| `v3_flat.py` | 158,663 | **3,358 B** flat array, one index | **+0.1%** | **ship this** |
-| `v3_expanded.py` | 1,463,844 | all 12 blobs as literals | +7.6% | reading a blob |
-| `v3_flat_expanded.py` | 1,467,202 | both | +7.4% | **read and edit this** |
-
-The two transformations are independent — expansion appends nothing, so
-`v3_expanded.py` still picks `_submission_entry` while both flat builds pick
-`_flatroute_entry` — and were verified separately as well as together.
-
-The CART was structure for its own sake — its leaves were already `(table, step)`
-references, so nothing depended on the branch structure. Its only real product
-was the substrate, and a flat array over `s1 = (legacy*5 + label)*719 + step` is
-a strictly better one: key space and reference space are the same integer space,
-so `_FR_REMAP[i] = j` means "state i plays state j's action" in one int.
-
-**All twelve blobs are also expandable now** (`pbt/expand.py`): the ten route
-tables and — the half nobody had read — the two market tapes `_V17_R5_MARKETS`
-and `_V17_MD_MARKETS`. `submission/v3_flat_expanded.py` has no compressed data
-in it at all. It costs 8x cold import and +7.6% episode wall, so **ship
-`v3_flat.py`, read and edit `v3_flat_expanded.py`**.
-
-All of these are **worth exactly zero extra points on their own** — substrates
-for a search, not candidates. Side-by-side copies and full write-up in
-`v3_compare/`; numpy tooling in `dynamic/tape/route_array.py`. There is
-deliberately **no opponent axis** — the opponent enters the eleven guards, not
-the route; see `pbt/flatroute.py`'s docstring for why adding one now makes the
-search harder before it makes the agent better.
-
-Nothing was submitted to Kaggle on 2026-08-21. The shipped agent is still
-55614625. Kaggle's API and the open web were both unreachable from this machine
-that day (`api.kaggle.com` SSL EOF; web fetches 403 through the configured
-relay), so the ladder standings below are a **2026-08-19 snapshot**, not live.
-
-The self-play / opponent-pool RL run (`dynamic/rl/train.py`) was **stopped** on
-2026-08-21 after ~21h. It had been flapping rung 6↔7 for hours — 536 promotions
-against 535 demotions, every rung-7 iteration at 0.0% poolwr with 26-41 errors,
-`best.npz` unchanged since 09:05. It produced nothing.
-
-### Rule 4, learned 2026-08-19 and now the most expensive one
-
-**For a concentrated effect, sample size means FIRING games, not games played.**
-The bucket-0 tape swap changes behaviour in only ~13% of games. Its first
-real-engine gate ran 180 paired games — comfortably past section 5's "≥100
-games" bar — but only ~28 of them fired, and it returned **-18** for something
-worth **+858** at 630 paired. Nothing was broken: the simulator reproduces that
-same -18 on that same sample. Always report how often a change actually fires
-and its CONDITIONAL distribution, not just the mean.
-
-Corollary: two "independent replications" that share an opponent set are not
-independent. +1,889 and +1,966 on disjoint seeds looked conclusive and were both
-drawing the same region; real independence came from changing distribution
-entirely (the 80 real ladder traces).
-
-### What was actually worth anything
-
-| change | measured on | gain |
-|---|---|---|
-| ~10 generations of constant search, PBT, tape-selection search | — | **~0** |
-| market intervention (lead 3, dump 80%, +FERTILIZER) | vs plain kawa | +1,611 |
-| IV_STRUCT + dump .70 + price gate .20 | real engine | **+670** |
-| bucket-0 tape swap | real engine | **+858** |
-| ...the same, across our 80 real ladder games | ladder traces | +429, record 62/80 → 66/80 |
-
-### The two lines, as of 2026-08-20
-
-Both are at local optima and the reason is now measured, not guessed.
-
-- **tape+market (SHIPPED, ladder 2183.9)**: 600 mutants cleared nothing;
-  five market-layer ideas refuted with controls. Section 20.
-- **from-scratch planner (-57,830)**: its economy already MATCHES the tape's
-  (own bank 86,386 vs 86,119). The entire gap is that the opponent banks ~$51k
-  more against us, and the cause is price, not stolen volume -- they sell 1,446
-  units against us and 1,447 against the tape, at $114.2 and $78.7 respectively.
-  Ten levers refuted. Section 19.
-
-### Corrections to earlier sections of this document
-
-- **Section 0's old "12 vs 14 hand slots" gap is NOT our deficit.** Measured
-  from 23 replays (`planner/analyze_top.py`): we run 277 hires, 12 hands, 2,858
-  useful ops — at or above every ladder leader, and the most ops of anyone. Only
-  ReCurSiON runs 14 hands. The gap is price realisation, not labour.
-- **Section 11's "tape-selection mapping already searched, default wins" is
-  wrong for bucket 0.** Section 16.
-- **Section 12's "IV_STRUCT is ambiguous" was under-sampling.** It is +420 at
-  n=1,440 paired (t=16.3), and shipped.
-- **Section 14's "the market layer is at a local optimum" is now true and
-  proven** — but it was true of the *parameters*, not of structural changes.
-  Section 17.
-
----
-
-## 1. Environment
-
-| what | where |
-|---|---|
-| project root | `/home/yilewang/kaggriculture` |
-| python | `/home/yilewang/kagg-env/bin/python` (venv, py3.14) |
-| engine source (READ IT) | `/home/yilewang/kagg-env/lib/python3.14/site-packages/kaggle_environments/envs/kaggriculture/kaggriculture.py` |
-| Kaggle CLI | `/home/yilewang/kagg-env/bin/kaggle`, token at `~/.kaggle/access_token` |
-
-Machine: **26 physical cores** (52 logical), 187 GB RAM. GPUs unused — the
-workload is single-threaded CPU-bound Python. **Always size pools to 26**;
-48 workers on 26 cores took 6+ minutes to not finish what 26 do in 30s.
-
-Rebuild the submission: see section 0 (the parameters changed 2026-08-19).
-
-## 2. File map
-
-```
-STRATEGY.md                   game economics derived from engine source (still valid)
-submission/main.py            THE FILE TO SUBMIT
-opponents/                    6 loadable public reference agents + extractor
-replays/                      downloaded ladder replays (~30MB each)
-
-pbt/intervene.py              the market-intervention layer = the entire real edge
-pbt/extract_tape.py           replay -> 719-step tape -> transplant into kawa
-route/bake.py                 assembles submission/main.py (base tape + layers)
-route/opponent.py             EXACT opponent-sales inference (used by the agent)
-route/tournament.py           round-robin harness
-route/batch.py                fixed-matchup batch scorer
-
-route/geom.py|router.py|agent.py   own-plan architecture — still far behind, section 13
-pbt/tapesel.py                tape-selection rule — bucket 0 IS mis-assigned, section 16
-
-planner/simulate.py           FAST pure-Python engine port, ~1,200 steps/s (~9x env.step)
-planner/tests/                test_sim_fidelity (56 replays) + test_agent_fidelity (live play)
-planner/intervene_sweep.py    market-layer sweeps, rounds 1-6, paired margin with CRN
-planner/tape_sweep.py         per-bucket tape argmax  |  tape_map_test.py  fresh-seed check
-planner/ladder_sweep.py       tune against the 80 REAL ladder opponents, not the pool
-planner/replay_counterfactual.py  "would the new agent have won the games we lost?"
-planner/analyze_top.py        realised per-unit prices from replays, us vs the leaders
-planner/decompile.py|spec_extract.py  tape -> explicit schedule spec, and the gap to it
-planner/day_pipeline.py       gated submission (real-engine + file-path gates)
-pbt/tape_edit.py              day-0 market editor (proved the tape is not editable)
-pbt/features.py|cluster.py    6-dim opponent features + K-Means (no signal found)
-pbt/adaptive.py|adversary.py  per-family counter params (tied with plain best)
-pbt/pool.py|variants.py|train.py   population-based training (random walk, section 5)
-agents/                       every baked variant from every experiment
-
---- v3 representation work, 2026-08-21 (section 4b) -----------------------
-submission/v3_base.py         the shipped v3, unmodified. 12 blobs, opaque
-submission/v3_tree.py         + CART blob          SUPERSEDED, kept for comparison
-submission/v3_flat.py         + flat state array   SHIP THIS ONE  (+0.1% wall)
-submission/v3_expanded.py     all 12 blobs as literal source
-submission/v3_flat_expanded.py  both               READ AND EDIT THIS ONE (+7.4%)
-
-pbt/flatroute.py|flatify.py   emit + append the flat array layer (_FR_*)
-pbt/expand.py                 expand every blob to literals; finds them by AST
-pbt/treeroute.py|treeify.py   the superseded CART layer (_TR_*)
-dynamic/tape/route_array.py   numpy view of the flat table: keys, diff,
-                              reachability, patch. NEVER imported by an agent
-dynamic/tape/v3_bench.py      equivalence sweep, V3_LAYER=tree|flat|expanded|
-                              flat_expanded. planner.simulate, 26 workers
-dynamic/tape/v3_submit_check.py  the same by FILE PATH under kaggle_environments
-                              (needs ~/kagg-env). Local only, never contacts Kaggle
-v3_compare/                   all five builds side by side + README + market_tapes.py
-```
-
-## 3. Engine mechanics that matter
-
-All verified against source, not the write-up.
-
-- **Market-limited, not production-limited.** Price = f(inventory) around a
-  10,000 baseline, per-product curves. MELON and WOOL are **quadratic** above
-  baseline (crash hardest), MILK and STRAWBERRY linear, EGG/WHEAT log (never
-  really crash). Selling at the $1 floor does **not** add to market inventory.
-- **Hands are cleared every night** and must be re-hired daily. Cost is
-  `fib(hires_today)` — so hiring *before* the tape's own hires reprices them
-  (4 hires first moves the tape's 5 from $7 to $81, and it goes crewless).
-- **A crop must be watered the day it is planted.** `_new_plant` starts at
-  `consecutive_unwatered = 1`; unwatered at the nightly refresh it is a weed by
-  morning. PLANT and WATER must ride in the same tile visit.
-- **CARE banks a multiplier** consumed on the next fed production day: goose
-  1→2 eggs/day, cow 1→3 milk/2 days, sheep 1→4 wool/3 days. Feed and care every
-  animal every day.
-- **Animals produce fertilizer unconditionally**, fed or not. Nobody in town
-  consumes it, so its price only falls — but it must still be sold, because the
-  shed holds only 100 items and hoarding it freezes all commerce (measured:
-  bank $62).
-- **Atomic PLANT validation:** if PLANT requests for one crop in a turn exceed
-  seeds held, *all* of them are dropped.
-- **`max_lifespan_step` is an absolute step index, not a duration.** MELON
-  planted day 0 gets 312 = decay starts **day 13**; it first yields **day 10**.
-  Reading it as "312 steps of locked capital" is wrong and has misled analyses.
-- **Within a step the engine runs `_process_market` before `_town_consume`.** A
-  sale placed on a step the town drains enters an undrained market; the same
-  sale one step later enters after the tick lifted the price. This is what the
-  front-run/dump timing exploits.
-
-## 4. The tape is immutable
-
-Day 0 is the most isolated possible edit — a market line that moves no unit.
-Paired margins after editing it:
-
-| day-0 change | vs kawa | vs v111 | overall |
-|---|---|---|---|
-| none (baseline) | +1,579 | +16,708 | **+12,101** |
-| feed 6 → 14 | +1,579 | +16,708 | +12,101 (**no effect** — no cash to fill it) |
-| melon 12 → 6 | -11,211 | -6,213 | -7,467 |
-| hire 4 + feed 14 | -63,945 | -50,846 | -54,541 |
-| 1 COW / 4 SHEEP | -111,355 | -106,791 | **-107,714** |
-| v111's whole day-0 line | -99,442 | -158,985 | **-138,558** |
-
-Every downstream PLACE/PLANT assumes exactly the shed the tape bought. Grafting
-another agent's opening onto this tape destroys it — its parameters only work
-with its own 720-step continuation.
-
-The same rigidity killed the day-1 fix. **All five tapes leave day 1 empty** —
-0 hand slots, 0 actions, 0 HIRE, so the farm runs that day on the farmer alone
-despite four hires costing $7 against $23 on hand. Overlay results, 40 games vs
-kawa each: baseline 62%, hire-only-day-1 62% (bodies idle — the tape has no work
-for them), hire every day **0%**, hire + assign work **0-5%**. A tape `PASS` is a
-hand *holding station*; moving it desynchronises the rest of its schedule.
-
-## 5. Measurement rules paid for the hard way
-
-- **Seat asymmetry decides same-tape games.** `_end_of_day` rolls player 0's
-  weeds first and `_process_market` resolves atomic HIRE/BUY_LAND in player
-  order. Identical agent vs itself: seat 0 wins 6/40, mean margin -$66. Use
-  paired margin; a byte-identical mirror then scores +0/+0, 0 wins, 0 losses.
-- **A screening panel ranks against a *field*; only pairwise ranks against an
-  *opponent*.** Three times a panel rated variants equal-or-better while the
-  direct 100-game pairing showed one clearly worse (once 26% vs the config it
-  had "beaten"). Screen broadly, decide pairwise.
-- **A variant needs ≥100 games before its rank means anything.** Real
-  differences here are 1-3 points; PBT scored variants on 12 games, so noise
-  dominated, `v8 random noise` kept "winning", and 10 rounds of optimisation
-  moved *backwards* (its champion then lost 22-78 to the earlier build).
-- **Never attribute engine callbacks using objects from `obs`.**
-  `kaggle_environments` structifies the observation, so `farm is obs["farms"][0]`
-  inside a patched `_commit_unit` is always false and every commit lands on one
-  player. Hook `_process_market(state, env)` — it gets the live state — and
-  identify players by `private` identity.
-- **A validation whose ground truth shares the broken step with the thing being
-  validated proves nothing.** The opponent-sales inference first "validated" at
-  near-zero error only because both sides were computing *combined* sales.
-- **Cross-opponent comparisons are confounded.** Weeds roll only on empty tiles,
-  so our tile count shifts the RNG before `rng.choice(SHOPS)` — the town's shop
-  mix changes with the opponent, and "agent X scores more against Y than Z"
-  supports no strategy claim.
-- **Seed range is *not* a confound** (hypothesis tested and rejected). Ladder
-  seeds are 32-bit; local work used 1-50. Over 40 of each: ours vs naru +11,374
-  / +8,860; kawa vs v111 +13,862 / +12,232; ours vs kawa +1,428 / +1,611. The
-  populations agree.
-- **`pkill -f <pattern>` matches your own shell.** Use `pkill -f '[g]a_search'`,
-  and beware that regex `.` matches `/` — `route.search` also matched the literal
-  text `route/search.py` in a heredoc and killed the shell running it.
-
-## 6. Opponent modelling — the one thing that paid
-
-**Their sales are exactly recoverable, not guessed.** Within a step the engine
-settles both players' orders and then the town's consumption, so
-
-    inv[t+1] = inv[t] + my_sales[t] + their_sales[t] - town_take[t]
-
-and every term but theirs is known: inventory is public, `town_take` is
-computable from the unlocked shop list, and our own sales are what we issued.
-Validated against engine ground truth over a full season: **zero error** on
-STRAWBERRY, MELON, MILK, WOOL and EGG; total absolute error 9, confined to
-WHEAT and FERTILIZER — the only products whose price reaches the $1 floor, where
-the engine deliberately does not record the sale.
-
-`pbt/intervene.py` measures each product's sale cadence from that inference and
-pushes stock into the book ahead of the predicted sale. Tuning by paired margin:
-
-| dump fraction (lead 3, +FERTILIZER) | vs kawa | mirror vs dump-40% |
-|---|---|---|
-| 40% | +1,221 | — |
-| 60% | +1,358 | +297 (37/3) |
-| **80%** | **+1,428** | **+467 (39/1)** |
-| 100% | +1,209 | +29 (29/11) |
-
-**Cost of running it:** observation must happen every turn (a running inventory
-delta — a skipped turn breaks the arithmetic), but the *action* fires only
-**9% of turns**, never before day 6 (needs ≥3 observations to fit a period),
-concentrated in days 23-27. FERTILIZER alone is half of all firings.
-
-**Ideas tested and rejected**, all from the published Market Relay write-up:
-exact repayment / volume conservation (**-3 to -5 points**: our dump is an
-aggressive extra sale, not a retimed one, so repaying hands the advantage back),
-near-mirror gating (**-2**, it only reduces how often we act), and buying wheat
-to squeeze an animal-heavy opponent (**2% win rate** — it spends cash the tape
-needs downstream).
-
-**We were exploitable and this is how it was found.** kawa does not model us —
-its `_future_sells(obs, step)` reads its *own* tape. But `_clone_distance` does
-read our farm, and ours is **0** against kawa (same tape), so its preemption is
-fully armed; denying it is worth +$784, and unreachable, because raising the
-distance past 6 needs 7 extra hands, 7 changed tiles, or a different tape.
-Turning our own layer around — equipping opponents with it — produced three
-predators that beat us, which is exactly how the dump fraction was found to be
-set too low.
-
-## 7. Reference agents and the ladder
-
-`opponents/` holds 6 loadable public agents, all stdlib-only and audited.
-Round-robin by paired margin (3,120 games): our build +9,016, kawa +8,103,
-ref_B/ref_D +1,608, v111 -13,338, rank-your-agent -13,624, pipeline -43,120.
-
-- **V16-RC5 is v111**, byte-identical (`sha256 f029fa0c…`, 18,946 bytes). Its
-  notebook's "60/60" is against its own reconstructed baselines, never against
-  kawa. Do not submit it.
-- **The ladder meta has converged on 8c4s.** Three different opponents
-  (Naru041104, Igor V, StopPlantingStartGameTheorying) open identically —
-  4-5 HIRE, **1 COW / 4 SHEEP**, 5 wheat seed, 5 melon seed, 5-14 wheat product —
-  and all reach 14 hands. We beat that family ~70% of paired seeds; the three
-  losses that prompted this investigation were a bad draw, not a systematic
-  defeat.
-
-### Submissions
-
-`publicScore` is a **skill rating, not money**, and converges with games played —
-two copies of the same agent can sit hundreds of points apart on match history
-alone.
-
-| id | file | score | what it actually is |
-|---|---|---|---|
-| 55594505 | submission.py | **2326.3** | **unmodified kawa** |
-| 55597426 | submission8.18.v2.py | 1898.5 | **unmodified kawa** |
-| 55576209 | Kaggriculture.py | 1848.1 | earlier user agent |
-| 55587826 | main.py | 482.6 | our GA route agent (all-crop) |
-
-Only the latest 2 are active; 5/day. **Nothing built on 2026-08-18 has been
-submitted** — every gain since is unvalidated on the ladder.
-
-### Replays are the only honest feedback
+# Kaggriculture white-box handoff
+
+Updated: 2026-09-04. This is the only current recovery document. The former
+long record is archived at `docs/HANDOFF_HISTORY_2026-09-02.md`; raw evidence
+stays in `logs/`, and equations/architecture stay in `MODEL.md`, `STRATEGY.md`
+and `WHITEBOX_ARCHITECTURE.md`.
+
+## Non-negotiable contract
+
+Build the strongest legal two-player agent, judged by absolute wins and paired
+final-money margin against a declared opponent pool. The online policy must be
+completely white-box:
+
+- every state, candidate action, constraint, cost and value term is named and
+  inspectable;
+- use only the current observation, public engine rules and our own retained
+  action certificates;
+- never identify opponents or branch on names, source files, replay IDs or
+  identities;
+- never imitate/follow action tapes, fit hidden weights or import offline
+  traces into runtime;
+- never hard-code leader dates, coordinates, asset counts or compositions;
+- leader/tape observations are offline falsification evidence only. Any lesson
+  must be re-derived from public rules and expressed as a general mechanism;
+- cash flow is a hard feasibility certificate, not the objective. Feasible
+  actions are compared by robust paired margin against a finite set of
+  resource-feasible, fully paid opponent responses;
+- no lambda mixing own wealth with win probability. IDLE is an explicit action;
+- `econ.MAX_OWNED_QUADRANTS = 3` is a user-required global invariant. No layer
+  may buy, plan for or use the fourth quadrant.
+
+Do not start a background campaign, server loop or watchdog. Work is
+foreground-only unless the user explicitly reverses this decision.
+
+## Current truth
+
+- Production entry: `whitebox/agent.py`; research wrappers:
+  `whitebox/versions/`.
+- Latest uploaded research bundle: `submission/whitebox_v204.py`, Kaggle
+  submission **56007683**, SHA-256
+  `b7c43154f4053a9cf355096d61f982f5b5492d57f79fb8faa2c7f92028c9bcdd`.
+  Kaggle accepted it as `COMPLETE` on 2026-09-04. After its first completed
+  ladder episode its publicScore is **698.8**; the initial 600 was only the
+  registration rating. V203 submission 55978231 completed at **744.6** and
+  V199 submission 55972915 currently reports **825.0**.
+- Final local V202 production bundle: `submission/whitebox_v202.py`,
+  SHA-256
+  `6a22323649a03ae1794bd6d574596b452c80c5dc1f986cf06b900d2318d679fc`.
+  Its packaged entry is `whitebox_v202_stable_repair`: V190's stable
+  economic core with V199 spatial multistart and the unproved paid-turnover
+  arm both explicitly disabled.
+- V132 is the evidence-backed reference. V149 is the strongest directional
+  land arm. V190 is the strongest recent economic arm. V204 is the latest
+  uploaded research arm. None is promoted under the current protocol.
+- V199's fresh 9-cell gain (+$6,037/cell, SE $6,387, W-L 6-3) is only a noisy
+  screen and had zero absolute wins. The measured hard-pool absolute win rate
+  remains 0%; there is no 100% or gold claim.
+- V200 service-cluster placement was inert after fixing a cash-flow pickup-day
+  crash. V201's repeatedly re-optimised land-turnover option could defer the
+  same ownership state forever and was rejected. V202 closes the submitted
+  regression by rolling back V199's noisy spatial-route second start to the
+  evidence-backed V190 configuration. V203 adds the bounded early-land option
+  and repaired late-land route reachability. V204 retains a deferred land
+  obligation until its public eligibility day and bounds the online integer
+  quantity frontier, as described below.
+- Preserve the dirty worktree. Many `whitebox/` files are currently untracked;
+  never reset, overwrite or delete unrelated work.
+
+## V202 diagnosis and production decision
+
+The external-observation trace of submitted V199 on seed 37320 exposed a real
+throughput symptom. It does not read planner internals.
+
+| measure | V199 | opponent |
+|---|---:|---:|
+| final cash | $121,716 | $151,497 |
+| PLANT / distinct used tiles | 103 / 51 = 2.02 | 199 / 63 = 3.16 |
+| DIG | **0** | **40** |
+| day-27 crops / weeds | 19 / 18 | 61 / 0 |
+
+V199 opens quadrant 2 on day 2; the opponent opens it on day 6. Early land is
+secondary. V199 never DIGs, productive area shrinks and service-heavy animals
+consume the remaining labour. These are observed symptoms, not online targets.
+
+The action-set bug was real:
+
+- V179 uses `execution_variant="paid_weed_reinvestment_manifest"`, which makes
+  a weed valuable even when no seed is already held and closes the circular
+  deletion `no seed -> DIG value 0 -> no empty tile -> no seed purchase`;
+- the capability is now an orthogonal plan boolean, threaded through projected
+  plans, cache keys, capital and execution without replacing fertilizer;
+- an empty/no-seed tile waits instead of losing its retained
+  DIG -> BUY_SEED -> PLANT -> WATER certificate;
+- the projected capital solve completes only the exact named missing seed,
+  under live cash reserve and order slots;
+- turnover output credits only the earliest unfertilized engine yield;
+- additive insertion preserves the ordinary task set and exact route order,
+  and cannot precede an incumbent output-banking tail.
+
+Those mechanical fixes are tested, but the economic hypothesis was falsified.
+The candidate still lacks a retained future-day harvest/service witness. The
+unsafe current-clear hire arm lost `-$10,785/cell` on the seed-37320
+three-opponent screen. After durable-capital and terminal-cohort gates, the
+two-seed hard screen still lost `-$2,456/cell`; order-preserving suffixes
+lost `-$2,494/cell`, with every firing pair negative. Therefore the paid
+turnover arm is retained only as `submission/whitebox_v202_experimental.py`
+and is **off** in production.
+
+The submitted V199 result also falsifies its own last addition. V199 differs
+from V190 only by a spatial route multistart that had a noisy nine-cell
+`+$6,037` screen (SE `$6,387`, t `0.95`) and then scored 822.4 live.
+V190 had the stronger recent evidence: `+$8,019/cell`, t `3.74`, W-L
+`14-4` against V149 on 18 fresh cells. A new two-seed direct comparison of
+V190 versus V199 was mixed (`-$1,250/cell`, W-L `4-2`) and not separated.
+V202 therefore makes the conservative, inspectable rollback: exact V190
+economics, no spatial second start, no paid turnover. On seed 37320 it is
+action-equivalent to V190 for all three hard opponents.
+
+## V203 adaptive land certificate
+
+Terminology matters. The farm begins with one quadrant. The first
+`BUY_LAND` opens the **second total quadrant**; this was occurring too early.
+The second `BUY_LAND` opens the **third total quadrant**; submitted V199 never
+issued it in the diagnosed Enrico Ambrosio replay.
+
+Two independent action-set bugs were repaired without putting that identity,
+replay ID, seed or action sequence into production:
+
+- Before the first paid expansion, the immediate land bundle must pay its
+  named assets and current crew while preserving the standing service bridge.
+  It is deferred only if both finite immediate endpoints fail and a concrete
+  standing one-shot crop supplies a cash/route/order-certified released-tile
+  alternative. This finite option may be exercised once per own ownership
+  state; it cannot recursively replace every later land decision and create
+  V201's endless rolling wait. A feasible immediate endpoint is never blocked
+  by a predicted date.
+- After two quadrants are public, `_late_crop_land_challenger` had already
+  selected a positive robust crop ray, but `joint_assign` re-ranked its new
+  capital columns by old standalone task values and could choose `n0`. The
+  selected ray is now routed as one mandatory candidate. Every route may still
+  reject it; displaced ordinary task value is charged, and the actually routed
+  positions are recertified before `BUY_LAND` is emitted.
+
+The external-observation trace on seed 38520 against the frontier reference
+shows the intended two-sided correction. V202 bought the first paid quadrant
+on day 2 and ended with two total quadrants. V203 bought on days 4 and 11 and
+ended with three. Against the fixed public action sequence from the diagnosed
+Enrico replay, the packaged V203 bought on days 8 and 14 and also ended with
+three. This fixed-sequence run is causal falsification only, not a win-rate
+estimate or an online dependency.
+
+Small hard-pool screens are mixed and remain screens: the known adverse
+three-cell block was `-$18,956/cell`, W-L 1-2; a fresh six-cell block was
+`+$9,152/cell`, W-L 4-2. They neither prove a regression nor qualify a
+promotion. Evidence is in
+`logs/arena/v203_one_exercise_vs_v202_diag_38550.json`,
+`logs/arena/v203_one_exercise_vs_v202_fresh6_38560.json`, and
+`logs/arena/v203_one_exercise_frontier_trace_38520_s0.json`.
+
+## V204 retained land commitment and bounded certificate frontier
+
+V203 fixed the value comparison but left two implementation failures in live
+play. First, after a certified decision to wait for a named standing crop to
+release its tile, the ordinary proposal could disappear on the eligible day;
+the policy remembered that waiting had been exercised but not the obligation
+to retry the land action. V204 stores only the public seat, current unlocked
+count and certified eligibility day. Before that day it suppresses only the
+same pure next-land ray. At and after that day it reopens
+`_late_crop_land_challenger` even when the ordinary capital master no longer
+proposes land, and emits `BUY_LAND` only after a fresh full cash, service,
+route and paid-response certificate. An ownership change clears the retained
+obligation. This repairs both premature first paid expansion and missed later
+expansion without a date, opponent or replay branch.
+
+Second, V203 certified every integer crop quantity. One live day generated
+141 expensive unified certificates; accumulated Kaggle overage caused the two
+deterministic timeout collapses seen in episodes 105129270 and 105201896. V204
+keeps every public crop direction but cheaply enumerates rule-derived endpoint
+feasibility first. Because Fibonacci hiring can make feasibility non-monotone,
+feasible quantities are partitioned into maximal contiguous regimes. Each
+regime retains its first and last quantity, its exact standalone-surplus
+maximizer, and that maximizer's feasible predecessor. Only this finite frontier
+receives the expensive adversarial certificate. This is a candidate-screening
+bound, never an acceptance shortcut: every emitted action still receives the
+unchanged unified certificate and exact routed-position recertification.
+
+The final package passed all **358/358** unit tests, compilation, forbidden
+runtime-token scan, and source/bundle identity. On the actual public-observation
+prefix of the diagnosed Enrico Ambrosio episode 105308430, V204 buys the third
+total quadrant on day 13 with `BUY_SEED WHEAT 4 + BUY_LAND`; source and packaged
+bundle agree through step 312. The two earlier missing-second-total-quadrant
+cases reopen on day 8 (WHEAT 16 in episode 105091929 and CARROT 17 in episode
+105104124). These replay identifiers are offline test labels only and do not
+occur in the runtime bundle.
+
+The full 720-step timeout replay 105129270 takes 22.10 s locally with a 3.402 s
+maximum call, versus V203's 13.1 s worst day and timeout from step 360. A second
+720-step timeout witness takes 16.85 s with a 2.904 s maximum call. The valid
+fresh six-cell hard-pool screen versus the immutable V203 bundle is
+`+$6,245/cell`, conditional `+$7,494`, W-L `3-2`, with 5/6 firing; this is a
+small neutral research screen, not promotion evidence. Source/package identity
+is exact in `logs/arena/v204_bundle_identity_38640.json`; the valid A/B screen
+is `logs/arena/v204_bounded_vs_v203_fresh6_38630.json`.
+
+The first real V204 ladder game is episode 105399683, seat 1 versus ipefix.
+Both agents finished `DONE` over all 720 steps. V204 won `$108,563` to
+`$59,301` (margin `+$49,262`), opened the second total quadrant on day 4 and
+the third on day 12, and emitted exactly two `BUY_LAND` orders. This is direct
+evidence that both land bugs are reachable in the submitted package, but one
+game is not a stable win-rate estimate. The public replay summary is
+`logs/planner/v204_live_56007683_initial.json`.
+
+## Next model seam
+
+Do not reopen paid turnover with another date/count threshold. Its value may
+be positive only when the same selected action retains a dated future manifest
+through harvest, or charges the robust displacement of every future standing
+task it cannot guarantee. Until that multi-day witness exists, production must
+keep the arm closed.
+
+The deeper planner seam remains joint labour displacement. An animal's missing
+white-box cost is not a fitted `2 * days * operation_price`; it is
+
+`L_animal(d) = V*_d(B_d) - V*_d(B_d - DeltaRouteTurns_animal(d))`,
+
+where the same executable task solve values the best excluded DIG, PLANT,
+WATER, harvest and sale tasks. Existing feed, route and wage charges must not
+be double-counted. Implement this only after the DIG loop is causally closed.
+
+## Other confirmed facts, kept concise
+
+- V201 moved first expansion from day 2 to day 6 on seed 38400 versus v111,
+  after 33 PLANT and 18 HARVEST rather than 22/0, but own final cash fell from
+  $103,644 to $58,911. Waiting has value, but a land-only timing repair is not
+  sufficient. Evidence: `logs/arena/v201_vs_v199_land_diag_38400.json`.
+- Animal service and weeds are one labour mechanism. On the same trace, cutting
+  peak animals 18 -> 6 released 168 FEED/CARE operations and added 77 WATER,
+  yet PLANT rose only 128 -> 132 and weeds worsened 23 -> 41. The task planner
+  did not convert free capacity into DIG -> PLANT -> WATER.
+- End-of-day auto-bank is capped by `shedCapacity=100`; all carried overflow is
+  deleted. Feed, standing shed stock and overnight goods require one joint
+  capacity certificate. V183's global binary auto-bank was strongly negative;
+  any future repair must be per-item and preserve same-day sale/reinvestment.
+- V199 runtime on one seed-38400 trace: median 2.24 ms, P99 172.76 ms, maximum
+  4.44 s, 7/719 calls above 180 ms. Structural finiteness is not a latency
+  bound; any promotion needs multi-state tail-latency evidence.
+- Offline leader audits support route locality, same-tile bundles, staged land
+  use and pricing service-heavy assets near access. They do not justify copied
+  coordinates, fixed 8-sheep/4-cow targets or any identity branch.
+
+## Architecture map
+
+1. `state.py`: visible state extraction.
+2. `opponent_model.py`, `horizon.py`: public opponent bounds/timing, no identity.
+3. `strategy.py`: transparent economic plan.
+4. `tasks.py`, `value.py`: exact tasks and explainable bundle values.
+5. `route/router.py`: workers, carried inputs and closed Manhattan tours.
+6. `capital.py`: hires, positioned assets, land and staged reinvestment.
+7. `cashflow.py`: dated cash/feed/order/shed/route feasibility certificate.
+8. `stackelberg.py`: worst-case margin over finite paid responses.
+9. `market.py`: prerequisite buys, hires, assets and nonlinear sales.
+10. `terminal.py`: constructive liquidation versus ordinary work.
+
+The intended value model must jointly contain early-cash reinvestment value,
+standing assets plus new capital's labour burden, and finite paid opponent best
+responses. It must remain a concrete robust/Stackelberg action comparison, not
+a prediction model or an own-cash heuristic.
+
+## Evaluation boundary
+
+`arena.py` has two stages:
+
+- `--stage screen` can falsify a mechanism but can never print `IMPROVEMENT` or
+  promote it;
+- `--stage promotion --holdout-id ID` requires at least 288 paired cells, at
+  least 100 firing cells, all episodes DONE/no errors, an unused seed block and
+  unused holdout ID. Repeated formal attempts use
+  `alpha_k = .05/[k(k+1)]` and record the required paired-win z value.
+
+Promotion also requires no absolute-win regression. A 100% pool win rate means
+winning every absolute game in a fresh declared block; candidate-versus-
+baseline W-L-T is not the pool win rate.
 
 ```bash
-/home/yilewang/kagg-env/bin/kaggle competitions submissions kaggriculture
-/home/yilewang/kagg-env/bin/kaggle competitions episodes <SUBMISSION_ID>
-/home/yilewang/kagg-env/bin/kaggle competitions replay <EPISODE_ID> -p replays/
-/home/yilewang/kagg-env/bin/python -m pbt.extract_tape replays/<f>.json <seat> out.py
+cd /home/yilewang/kaggriculture
+/home/yilewang/kagg-env/bin/python arena.py CANDIDATE.py \
+  --baseline BASELINE.py --stage screen --seeds 6 --seed0 S \
+  --pool hard --engine sim --json logs/arena/NAME.json
 ```
 
-The real seed is at `info.seed` (32-bit) — any ladder game reproduces locally
-with it. **Off-by-one:** replay `steps[0]` is the initial state and carries no
-action; actions live at `steps[1:]`, which is why tapes are 719 long. Taking
-`steps[0]` silently discards the opening turn.
-
-Transplant fidelity is verified: replaying both extracted tapes at the episode's
-real seed reproduced 107,064 v 135,395 against an actual 108,217 v 135,557.
-
-## 8. Ground rules with the user
-
-The competition permits reusing published notebooks; the user has confirmed they
-want that. The shipped agent is a public tape plus our own market layer, and
-that is understood and intended.
-
-## 9. Next (superseded by sections 16-18; see section 0)
-
-1. **Submit and get a real score.** Every local avenue is exhausted; the one
-   number we do not have is what the intervention layer is worth on the ladder.
-2. **The 12→14 hand-slot gap** is the only quantified structural deficit left,
-   and it needs a different tape, not a tuned one. Extraction tooling is ready.
-3. Do not re-run constant searches. They were run to exhaustion and measured
-   zero once paired margin replaced win rate.
-
-## 10. The sparring pool cannot be grown by copying the ladder
-
-Six reference agents is a small pool and the overfitting risk is real. Copying
-the top of the ladder does **not** fix it.
-
-Access is not the problem — it is fully solved. `pbt/build_pool.py` walks
-leaderboard `teamId` -> that team's submissions -> that submission's episodes,
-and episode *metadata* already carries `team_id`, `submission_id`, `reward` and
-seat index. **2,616 real ladder games were mapped without downloading a byte.**
-Real head-to-head records for the top 20 (>=25 games):
-
-| team | ladder score | W-L | win% |
-|---|---|---|---|
-| tetsuya | 3048 | 83-11 | **88%** |
-| mandgeee | 2910 | 82-17 | 83% |
-| VanKoha | 2888 | 58-13 | 82% |
-| カワシギ | **3196** | 143-34 | 81% |
-| 我的AI是GPT | 2899 | 69-21 | 77% |
-| Utkarsh #2 | 2904 | 137-134 | 51% |
-
-Note score and strength disagree: tetsuya wins 88% but ranks 3rd on rating.
-
-**The blocker is that these agents are adaptive, not tape-replay.**
-`pbt/agreement.py` compares three of an agent's own games step by step:
-
-| team | farmer agreement | hands | market |
-|---|---|---|---|
-| tetsuya | 49.1% | 19.1% | 76.5% |
-| カワシギ | 37.4% | 26.1% | 43.4% |
-| 我的AI是GPT | 39.9% | 27.7% | 45.1% |
-| mandgeee | 65.2% | 33.0% | 52.6% |
-
-V16-RC5 reconstructed Nikita's submission at **99.91%** market agreement — that
-one was a tape. The current top of the ladder is not. A single episode is a
-*trace*, not a policy; replayed blindly it degrades badly (the extracted files
-lost to our submission by up to -106,857, implausible for a 77%-win opponent).
-They are quarantined in `pool_invalid/`.
-
-**Always run `pbt/agreement.py` before trusting an extracted opponent.**
-
-This also reframes the ladder: the "two schools" split by day-0 opening is only
-an opening similarity. The continuations are adaptive and diverge.
-
-## 11. The behavioural-cloning critique, tested point by point
-
-A review argued the agent is brittle behavioural cloning and proposed
-parameterising quantities, adding a fallback policy, auto-selecting sequences,
-and training a network. Measured against this codebase:
-
-| proposal | verdict |
-|---|---|
-| parameterise absolute quantities into formulas | **refuted** — day-0 quantity edits cost -107k to -138k (section 4) |
-| auto-select the sequence from opponent features | **already present and already optimal** — `_kawa_route_label`; the whole 5-bucket mapping was searched, default wins (section 23 of the archive) |
-| submission size near a 20MB limit | **wrong** — the file is 155KB |
-| weed/exception recovery | **already present** — `_weed_repair_action`, `_align_hands` |
-| market intervention | **already shipped** — and confirmed firing on the ladder |
-| "zero generalisation, catastrophic drift" | **overstated but has a kernel** — see below |
-| add a fallback policy for drifted states | **refuted, decisively** — see below |
-
-### How much does the tape actually misfire?
-
-`pbt/noop_probe.py` checks every tile op against the engine's own preconditions
-before submission, over 96 games:
-
-- wasted tile ops: **2.0% mean** (median 1.5%, worst 15.3%)
-- wins 1.7% vs losses **3.5%**; correlation with margin **r = -0.32**
-
-So drift is real and does correlate with losing, but at 2% it is not
-"catastrophic", and it explains ~10% of variance.
-
-### Why no fallback can exploit it
-
-`pbt/recover.py` substitutes a valid op **on the tile the unit already occupies**
-whenever the tape's op would no-op — never moving, so position stays in sync,
-and only touching turns the tape was wasting anyway. It looks free. It is not:
-
-| opponent | recovery off | recovery on |
-|---|---|---|
-| kawa | +1,168 | **-140,858** |
-| v111 | +11,560 | -130,748 |
-| 3000-socre | +11,845 | -150,193 |
-| rank-your-agent | +13,504 | -127,066 |
-
-Head to head: **0 paired wins in 32**.
-
-Position invariance is not enough — the tape needs **state** invariance, and
-there is no useful action that leaves state unchanged. HARVEST takes the yield
-and, on a non-ongoing crop, *deletes the plant*; WATER sets `watered_today` and
-changes yield accrual; CARE and COLLECT_FERTILIZER consume their flags.
-
-**Even the wasted 2% of turns cannot be reclaimed.** This is the third
-independent confirmation that the tape admits no edits, and the strongest.
-
-## 12. Structural yield forecast and staged dumping — tested, both marginal
-
-A review proposed replacing the dump trigger's observed-cadence predictor with
-one that reads the opponent's *visible board* (animal `placed_day + first_yield
-+ k*interval`, crop growth tables), and splitting the dump into tranches.
-
-The first idea was a genuine gap: `route/opponent.py::forecast_supply` had been
-built and validated but was never wired into the intervention trigger, which
-used only the median observed sale interval. Both were implemented
-(`IV_STRUCT`, `IV_STAGED`) and measured over 32 paired 32-bit seeds:
-
-| variant | kawa | v111 | 3000 | rank | field mean | direct vs base |
-|---|---|---|---|---|---|---|
-| base | +1,149 | +15,354 | +10,942 | +17,478 | +11,231 | — |
-| **struct** | **+1,469** | +15,556 | +11,754 | +17,175 | **+11,489** | -29 (8/32) |
-| staged | +1,124 | +15,539 | +11,056 | +17,583 | +11,325 | **-386 (1/32)** |
-| both | +1,417 | +15,629 | +11,769 | +17,250 | +11,516 | **-824 (2/32)** |
-
-- **Staged dumping is refuted** (-386, 1 paired win in 32). Splitting the block
-  gives the opponent a turn to sell into the gap.
-- **The structural forecast is ambiguous**: +258 on the field mean (+320 against
-  kawa specifically, a 28% relative gain on that matchup) but -29 and 8/32 in
-  the direct mirror. A -29 mean on a ~$90k bank is 0.03% — the mirror is
-  effectively a tie decided by noise.
-
-Not shipped. The effect is inside the band where today's measurements have
-repeatedly inverted, and a live submission was already performing on the ladder;
-swapping it for a ~2% local signal is not justified. Kept behind `IV_STRUCT` for
-a future run with a larger sample.
-
-### Proposals refuted before implementation, from measurements already on file
-micro-task/transaction restructuring of the trace, A* pathfinding with a
-reservation table, worker-driven early shed clearing (discards measured at
-**0** — the problem does not exist), per-shop-combination dedicated traces
-(we cannot author tapes; the ladder top is adaptive), and offline GA
-perturbation of the trace. All require editing the tape. See sections 4 and 11.
-
-## 13. Self-built planner: restarted 2026-08-18 evening
-
-The tape is a hard ceiling and the ladder offers no better one to copy — every
-strong agent is either running kawa's public tape already (HKmgikao matches
-`_ACTIONS_6C12S_4Q_FIRST_YARN` at 100% farmer / 94.9% market) or is adaptive and
-cannot be extracted (VanKoha 56.7%, Galaxantic 50.1%, Eddy Despradel 64.5%,
-Michael Timbs 59.0%, plus the four in section 10). So the only way past it is to
-author a schedule, which means `route/`.
-
-### Honest baseline, paired margin, 32-bit seeds
-
-| genome | vs kawa | vs v111 | vs 3000 | own bank |
-|---|---|---|---|---|
-| best_route2 | **-101,239** | -83,164 | -109,886 | $68,655 |
-| best_route6 | -104,431 | -106,251 | -111,069 | $62,879 |
-| defaults | -137,842 | -144,963 | -149,372 | $48,571 |
-
-We bank ~$68k where kawa banks ~$170k in the same game. **The gap is 2.5x**, not
-the 1.3x an earlier note implied — that note compared numbers measured under
-different matchups and was wrong.
-
-### Three fitness defects fixed before restarting
-
-The earlier searches optimised the wrong thing:
-
-1. **`starter` was in the matchup set.** Pitfall #3 exactly — a champion tuned
-   with it won every local game and scored 485 on the ladder. Removed.
-2. **Fitness was mean *own bank*.** That rewards a genome for drawing a rich
-   seed, not for beating the opponent. Now mean **paired margin**.
-3. **One seat only, and seeds from 1..10^6.** Now every reference is played from
-   **both seats on the same seed**, with seeds drawn from the ladder's own 32-bit
-   range.
-
-### Result: 124 generations, stopped 2026-08-18
-
-| | gen 0 | best (gen 116) |
-|---|---|---|
-| paired margin vs the reference pool | -34,720 | **-8,192** |
-| win rate | 0.00 | 0.17-0.33 (noisy) |
-
-The gap closed **76%** and then flattened. Best genome: 5 COW / 6 SHEEP /
-6 MELON / 24 STRAWBERRY / 4 WHEAT, `MAX_HANDS=16`, `HIRE_BUDGET_FRACTION=0.61`
-— and the search turned **`FRONT_RUN` and `OPP_MODEL` off**, which is the
-opposite of what helps the tape build.
-
-Still negative: it does not beat kawa. The line is kept because it is the only
-one that depends on nobody else's tape, but on this evidence a parameter search
-over the existing planner will not close the remaining gap — the shortfall is in
-the economy (revenue per unit and product mix), not the routing, which already
-runs 31% movement against kawa's 43%.
-
-**Do not edit `route/agent.py` or `route/router.py` while a search runs** —
-workers re-exec the agent per episode and the fitness signal is silently
-corrupted.
-
-## 15. Evaluation pool, expanded 2026-08-18
-
-Six agents was too small a pool. Twelve high-vote public notebooks were pulled
-with `kaggle kernels pull`; after dedup **five were genuinely new and usable**,
-taking the pool to **nine**. Measured against our build (paired margin, 20 seeds,
-both seats):
-
-| pool member | paired margin | paired wins |
-|---|---|---|
-| kawa (multi-route) | **+1,176** | 19/20 |
-| frontier-the-soil-remembers-rain | +13,311 | **13/20** |
-| v111 / V16-RC5 | +14,798 | 15/20 |
-| breaking-the-tie-2883 | +17,284 | 15/20 |
-| Kaito Fukami v25 | +27,512 | 20/20 |
-| strong-barnyard-economist | +33,887 | 20/20 |
-| pure-architecture-2600-elo | +39,589 | 20/20 |
-
-**No public notebook is worth copying** — every one is weaker than what we
-already run, including the public v25 of the player who was ranked #1 (3220) at
-the time. Public notebooks lag well behind what the top players actually submit.
-They are useful only as sparring partners, and `frontier` is the valuable
-addition: it takes 7 of 20 seeds off us, so it exercises the agent differently
-from the kawa family.
-
-Dedup saved three redundant matchups: `rank-top10-read-the-market` =
-`3000-socre` = `ttv1`, and **boatlee's "V20-Adaptive-R1" is kawa itself**.
-
-Four notebooks (adaptive-farming-strategy, findings-from-zero-to-top-meta,
-structured-economic-policy, ultimate-mega-ensemble-3000) extract to analysis
-code rather than a standalone agent and are not usable.
-
-## 14. v3 ladder losses: no bug, and the market layer is at a local optimum
-
-37 games, **32-5 (86%)**. All five losses are narrow — the worst is -5,341 on a
-$121k bank (4.4%) and the smallest is -139. There is no collapse to fix.
-
-**Four of the five are at seat 0**: seat 0 goes 17/21 (81%), seat 1 goes 15/16
-(94%). That is the structural asymmetry from section 5 showing up on the ladder,
-and it is not fixable from the agent side.
-
-The largest loss did suggest a real mechanism. We sold **2,738 FERTILIZER to the
-opponent's 1,697** while its price ran 43 -> 26 -> 10 -> **1**, and the game
-turned in exactly that window (d22 +414 -> d24 -5,097). Front-running only pays
-while there is a price to win; at the floor both players clear at the same few
-dollars. kawa ships this idea as `_PREEMPT_MIN_PRICE_RATIO` but leaves it at 0.0.
-
-Implemented as `IV_MIN_PRICE` and measured over 24 paired seeds:
-
-| gate | field mean | direct vs gate-off |
-|---|---|---|
-| off | +8,137 | — |
-| 0.05 | +8,186 | +65 (9/24) |
-| **0.10** | **+8,280** | **+100 (12/24)** |
-| 0.20 | +8,320 | -12 (8/24) |
-| 0.35 | +8,277 | -178 (7/24) |
-
-**Not shipped.** The best variant wins its direct matchup 12 of 24 — exactly
-chance — and +100 on an +8,137 margin is 1.5%.
-
-That is the third refinement of the market layer to land in the noise
-(structural forecast, staged dumping, price gate). **The layer is at a local
-optimum; stop tuning it.** Remaining gains have to come from the schedule, which
-is what `route/` is for.
-
----
-
-## 16. The tape-selection rule: bucket 0 IS mis-assigned (2026-08-19)
-
-Section 11 recorded the 5-bucket mapping as "already present and already
-optimal — the whole 5-bucket mapping was searched, default wins". That is right
-for four of the five buckets and **wrong for bucket 0**.
-
-`_kawa_route_label` maps the town's shop draw onto one of five tapes. The space
-is 5^5 = 3,125 mappings, which is the wrong way to attack it. Buckets are
-mutually exclusive, so force each tape, record which bucket each game fell into,
-and take the argmax **per bucket** — 5 measurements, not 3,125
-(`planner/tape_sweep.py`).
-
-That naive answer proposed changing three buckets and was wrong on two counts:
-
-1. The argmax is selected on the data it is scored on.
-2. **The bucketing is post-hoc.** `_kawa_route_label` reads the shops unlocked
-   *so far*, so the bucket starts at 4 and moves as shops unlock — the agent
-   switches tapes mid-episode. The tell was in the data: the default agent's
-   bucket-1 mean (21,379) did not equal the mean of the tape the default map
-   assigns to bucket 1 (15,847), which it would have to if the map were static.
-
-Tested properly, as real `TAPE_MAP` variants on seeds disjoint from the
-derivation (`planner/tape_map_test.py`):
-
-| change | vs live | t |
-|---|---|---|
-| **bucket 0 only** | **+1,841** | **13.7** |
-| all three buckets | +1,041 | 3.2 |
-| bucket 1 only | -111 | -0.8 |
-| bucket 2 only | -814 | -6.1 |
-
-Bucket 0 fires when YARN_STORE is the first shop unlocked. The default sends it
-to `6c12s_4q_first_yarn`; `6c12s_4q_second_yarn` is much better there.
-
-**The conditional distribution is the part that matters**, because a tape swap
-replaces the whole 30-day schedule — it either does nothing or changes
-everything:
-
-```
-fires on 12.6% of games (452 of 3,600 paired)
-conditional mean +14,662 (se 853, t=17.2), positive in 365/452 = 81%
-conditional sd 18,145   min -33,940   median +12,618   max +72,456
+Required order: targeted tests; full unit/compile checks; isolation fingerprint;
+one causal seed; fresh 18-cell screen; fresh 102-cell gate if warranted; only
+then a formal unused 288-cell promotion holdout and larger real-engine checks.
+
+## Verification and hygiene
+
+```bash
+cd /home/yilewang/kaggriculture
+/home/yilewang/kagg-env/bin/python -m unittest discover -s whitebox -p 'test_*.py'
+/home/yilewang/kagg-env/bin/python -m compileall -q whitebox route planner arena.py
+git diff --check
+rg -n 'incoming|submission|decomp|trace|opponent.*(name|file|id)' \
+  whitebox --glob '!test_*' --glob '!versions/*'
 ```
 
-Confirmed on the distribution that actually matters — replayed against the 80
-real ladder opponents we have faced: **+429, record 62/80 → 66/80**.
-
-Shipped as 55614625. Real-engine gate +858 (se 242) over 630 paired games.
-
-**The remaining four buckets have now been checked properly and the default is
-right for them. Do not re-search this.**
-
----
-
-## 17. The market layer is exhausted — proven, not assumed (2026-08-19)
-
-Section 14 concluded "the layer is at a local optimum; stop tuning it" from
-three refinements landing in noise at n=24-32. That conclusion was correct for
-*parameters* and wrong for *structural* changes — `IV_STRUCT` was structural and
-worth +670 on the real engine.
-
-With `planner/simulate.py` the parameter question is now settled at ~1,300
-paired games per variant, with common random numbers:
-
-| round | what | verdict |
-|---|---|---|
-| 1-2 | IV_STRUCT / dump / price gate / lead / slot | **+490 shipped**; slot_first -327 (t=-10.8); lead 2 and 4 both worse than 3 |
-| 3 | dump ITEM SET (drop STRAWBERRY, MILK, etc.) | refuted: no_strawberry +496 vs unchanged +495 |
-| 4 | base tape `_PREEMPT_*` constants | **all noise** |
-| 5 | seat-conditional play | refuted, and backwards from the hypothesis |
-| 6 | sell SUPPRESSION (hold stock for price) | **catastrophic**, -7,905 to -14,731 |
-| — | tuned against the 80 real ladder opponents | live config already optimal (best +23) |
-
-Two findings inside those negatives are worth keeping:
-
-- **kawa's own preempt layer is inert under our configuration.**
-  `_PREEMPT_MAX_BATCH` 30→40, `_PREEMPT_FRACTION` 1.0→2.0 and `_PREEMPT_START`
-  120→0 each produce an **exact 0.0** paired delta. Our layer has taken over its
-  role entirely. This retroactively explains section 5's note that PBT "moved
-  backwards" over 10 rounds on these constants — it was optimising dead
-  parameters.
-- **Our high-volume/low-price selling is structural, not a defect.**
-  `planner/analyze_top.py` shows us selling the most units (1,813) at the lowest
-  price ($80.4) against ReCurSiON's 1,404 at $129.6, which looks like an obvious
-  target. It is not: withholding sales at ANY threshold is catastrophic, because
-  the tape's economy depends on continuous liquidation — held stock fills the
-  100-item shed, stalls production and starves downstream purchases.
-
-**Also corrected:** section 0's old "12 vs 14 hand slots, ~22% less labour" gap
-is not real. Measured over 23 replays we run 277 hires / 12 hands / 2,858 useful
-ops — the most ops of anyone on the ladder. Only ReCurSiON runs 14 hands.
-
----
-
-## 18. The from-scratch planner, 2026-08-19: still far behind
-
-`route/agent.py` under the current best genome is **~-34,000 paired margin vs
-the 9-agent pool at ~0% win rate**. Note the honest baseline: gen116's recorded
-fitness of -8,192 was measured on a much easier matchup mix (kawa + one rotating
-reference + self-play); under the full uniform pool the same genome is -47,787.
-
-Tried and refuted today:
-
-- 10 hand-picked portfolio variants (more GOOSE/EGG, less STRAWBERRY, 8c4s-style
-  mix): **all worse than baseline**, some much worse.
-- `MIN_CREW` floor in `_size_crew` (`planner/route_v2.py`): **-13k to -52k**.
-  The idea was that sizing the crew to *today's* tasks is circular — tasks come
-  from planted tiles, which come from yesterday's crew — so a floor should
-  bootstrap it. Instead it burns fib-priced cash on idle hands, matching section
-  4's finding for the tape. The identity check (MIN_CREW=0 reproduces the
-  unmodified agent at exactly +0) confirms the measurement was sound.
-
-`planner/spec_extract.py` turns the tape into an explicit target list. The gap
-is **scale, not efficiency**: our realised price per unit is BETTER than the
-tape's ($89.7 vs $79.6) and our useful-op rate is higher (44.5% vs 40.1%), but
-we hire 188 to its 277 and land 67 PLANT / 13 PLACE to its 186 / 53. We run a
-farm about two thirds the size, well.
-
-**Do not edit `route/agent.py` while a search runs** — workers re-exec it per
-episode. Copy it (as `planner/route_v2.py`) and edit the copy.
-
----
-
-## 19. The planner's deficit is PRICE SUPPRESSION, and ten levers were refuted (2026-08-20)
-
-### The measurement that reframes everything
-
-Every diagnostic before tonight measured OUR side -- revenue per work-turn,
-$/unit, work fraction, build count, idle rate -- and all of them showed the
-planner at or above the tape at 50 tiles. That is why nine experiments chased
-the wrong quantity. **`paired margin` is us MINUS them, and the second term was
-never measured on its own.**
-
-Over 4 opponents x 3 seeds x both seats:
-
-| we play | own bank | opponent bank | paired |
-|---|---|---|---|
-| dynamic, 50 tiles | 86,386 | **131,522** | -45,136 |
-| the tape | 86,119 | **80,601** | **+5,518** |
-
-**Our economy is already tape-equivalent -- 0.3% apart.** The whole gap is that
-the opponent banks ~$51k more against us than against the tape.
-
-### It is price, not volume. The opponent sells exactly as much either way.
-
-| we play | opp units | opp $/unit | opp bank | our units | our $/unit |
-|---|---|---|---|---|---|
-| dynamic | **1,446** | **114.2** | 131,522 | 1,110 | 104.6 |
-| tape | **1,447** | **78.7** | 80,601 | 1,603 | 80.5 |
-
-The opponent sells 1,446 units against us and 1,447 against the tape -- the tape
-takes not one unit from them. It wins by selling 1,603 units to our 1,110, which
-drags the shared price level down 31% for everyone. **The tape suffers the low
-prices too ($80.5/unit); it wins because at that price level the larger producer
-comes out ahead.** Our high $/unit is a symptom of being small, not a strength.
-
-So the requirement is precise: **produce profitably above ~50 tiles.**
-
-### Ten levers, all refuted
-
-| lever | result |
-|---|---|
-| proportional portfolio scale-up | -87,245 |
-| crew floor (MIN_CREW) | -52,000 |
-| crew + tiles together (schedule-driven) | -62,285 |
-| cycling-crop portfolios (wheat-heavy) | -150,176 |
-| geese (the uncapped book) | -183,427 |
-| front-loaded purchases | -42,897 |
-| SeasonPlan layout transplant | -86,211 |
-| whole-tile triage scheduler | +/-2,700, i.e. noise |
-| wheat flooding | -95,916, **and it makes the opponent RICHER** |
-| capped-book flooding | -81,980, **opponent's volume does not move at all** |
-
-Two of these are worth keeping as facts rather than scores:
-
-- **Flooding wheat subsidises the opponent.** The engine allows `BUY_PRODUCT`
-  only for WHEAT and FERTILIZER, so wheat is what they buy for feed. Pushing our
-  wheat sales 285 -> 536 raised their bank 106,957 -> 112,248.
-- **There is no headroom to steal.** Across every capped-book variant the
-  opponent sold 753-755 units regardless of whether we sold 540 or 638. Town
-  drain replenishes fast enough that both players sell what they produce. An
-  earlier note in this document reasoned that capped products cannot be denied
-  because both clear at $1; the real reason is simpler -- volume is not
-  contested at all, only price is.
-
-### Why buying to dump cannot work
-
-`_commit_unit` quotes `BUY_PRODUCT` at `market_price(inv - 1)`, i.e. post-buy,
-with the engine's own comment: "so a buy/sell round-trip against an unchanged
-market nets zero". Price suppression has to be PRODUCED, never purchased.
-
-### Status
-
-Mechanism fully characterised, no usable lever found. This is not a parameter
-problem: it needs a day scheduler that stays profitable past 50 tiles, and the
-triage rewrite (`dynamic/router2.py`) did not deliver that. Do not re-run
-portfolio or cash-flow searches -- `planner/role_gradient.py` measured all 24
-single-role perturbations of the 50-tile optimum negative, and a 19-generation
-cash-flow GA peaked at generation 1 (-57,830 from -78,027) and then went 17
-generations without improvement.
-
----
-
-## 20. The tape+market line is exhausted too (2026-08-20)
-
-`evolution/` ran 600 mutants over 3 rounds -- tape-map recombination, cross-family
-window splices, and jitter on the base tape's constants -- with **zero clearing a
-+200 screen**, and stopped on its own plateau rule.
-
-Market-layer ideas tested and refuted tonight, each with controls:
-
-| idea | result |
-|---|---|
-| adaptive dump sizing from the exact price curve | 12 variants, all negative; best -34 |
-| ...against fixed-fraction controls | no adaptive setting beat its fixed control |
-| depth concentration (dump only MELON+FERTILIZER) | 8 variants, all negative, best -127 |
-| day gate on late-game dumping | +22 (pool), +10 (ladder replays) |
-| weighted / most-recent cadence predictor | 5 variants, -126..-181; median stands |
-
-**The front-run audit is the useful artefact.** Over 144 games, tracking every
-firing against the opponent's exactly recovered sales: we clear ahead on
-**94-99%** of firings and same-step collisions are rare (the engine quotes both
-players against the same pre-commit inventory, so a same-step sale is priced
-identically for both -- beating them requires a strictly earlier step). Position
-is not the problem. Realised price sorts by market DEPTH instead:
-
-```
-FERTILIZER  493 units to floor   +1.1 per unit
-MELON       158                 +24.3
-MILK         76                  -2.8
-STRAWBERRY   62                  -2.1
-WOOL         59                  -2.2
-```
-
-On three of five products we sell first and realise LESS: dumping into a shallow
-book walks our own later units down, the town drains, and the opponent sells into
-the recovery above our average. But the A/B refuted acting on it -- concentrating
-on the deep books scored -127 -- so the audit signal is correlational, and does
-not separate our dump's causal effect from the price path it shares with theirs.
-
----
-
-## 21. Measurement rules added tonight
-
-**Identical rows across variants means a parameter is inert, not that the idea
-is neutral.** This cost three separate measurements:
-
-- `TERMINAL_STEP` belongs to `route/agent.py` and does not exist in the tape
-  build; nine terminal-timing variants returned byte-identical numbers.
-- `PLAN_GATE_DAYS >= 0` is true for 0, so a SeasonPlan "off" control silently ran
-  the tape's 73-tile layout with 50-tile parameters and scored -164,312 against
-  its real -78,101.
-- A sell-policy sweep produced seven identical rows because the reserve was
-  never binding; a follow-up probe then mislabelled the cause as the reserve
-  price when the actual hold is the FEED buffer.
-
-`dynamic/agent2.py::configure()` now reports unknown keys and raises under
-`STRICT_PARAMS`. **Apply the same guard before trusting any sweep.**
-
-**Do not select games by outcome and then read their trajectory.** A per-day
-margin trace of 7 losses against 7 wins appeared to show "endgame collapse" --
-losses led at day 15 and bled out. That is circular: a loss is by definition a
-game whose margin ends negative. Two interventions built on it (day gate,
-adaptive sizing) found nothing, because the pattern was an artefact of the
-selection. Compare at a FIXED point instead: of all games led at day 15, what
-fraction converted?
-
-**Behavioural cloning from a tape cannot work, and the control proves it.**
-`planner/bc_data.py` + `bc_train.py` reach 92.8% action accuracy (96.2% on
-non-move ops) from 2.7M samples. The resulting agent banks **$288** against the
-tape's $89k. Letting the TAPE drive and merely asking the network what it would
-do gives 92.6% agreement -- so the model is correct and the failure is covariate
-shift. It is unfixable here: DAgger needs the expert to label the states the
-learner reaches, and a fixed 719-step action list cannot be queried off its own
-trajectory. Adding data does not help; more on-distribution samples say nothing
-about off-distribution states.
-
----
-
-## 22. The suppression math, and why neither half of the architecture can use it (2026-08-20)
-
-Built to the plan of pricing every decision through the real market: an exact
-market model, an opponent inventory tracker, and both wired into the market
-controller and the day scheduler. **The math is right, both wiring points are
-measured inert, and the reasons are structural rather than parametric.**
-
-### The marginal value of a sale is not its price
-
-`dynamic/market_model.py` reproduces the engine's `market_price` bit for bit
-(0 mismatches over 9 products x 4,001 inventories) and adds the analytic slope.
-Market inventory is a pure accumulator -- `_town_consume` subtracts the same
-amount whatever we do -- so an extra unit sold now clears every LATER sale by
-BOTH players one slope lower, for the rest of the season. Differentiating the
-margin gives
-
-    MV = P(inv) + alpha * |P'(inv)| * (N_them - N_us)
-
-The suppression term is **signed on the difference of the two remaining
-supplies**. That single fact retro-explains three earlier negatives: flooding a
-book we ourselves still have to sell into is self-harm, which is exactly what
-wheat flooding (-95,916) and capped-book flooding (-81,980) were measuring.
-
-**Section 20's front-run audit was reading the wrong cause.** It sorted
-realised-price edge by market DEPTH; the real variable is NON-RECOVERY, and
-depth only correlates with it. Season town demand against units-to-floor:
-
-    MELON       30 demand / 158 to floor   ratio 0.19   audit +24.3
-    FERTILIZER   0        / 493            ratio 0.00   audit  +1.1
-    WOOL       246        /  59            ratio 4.2    audit  -2.2
-    MILK       331        /  76            ratio 4.4    audit  -2.8
-    STRAWBERRY 422        /  62            ratio 6.8    audit  -2.1
-
-MELON is in **no shop's product list** -- only the town centre's 1-per-24-steps
-touches it -- and FERTILIZER has no buyer at all. Those two are the only books
-where being first is worth anything, and they are exactly the two the audit
-scored positive. The three it scored negative are the three the town refills
-4-7x over. Perfect ordering, and it is derivable without playing a game.
-
-### The opponent's holdings are recoverable, and they are always small
-
-`dynamic/opp_state.py`. Their tiles are fully public, including `yield_units`,
-`pending_care_bonus` and `money`. Within a day `yield_units` can only fall, and
-only HARVEST lowers it, so summing intra-day drops measures their harvests
-**exactly** -- validated in `dynamic/opp_state_test.py`, where the residual
-mirrors the sales side unit for unit.
-
-Two corrections tame the sales side, which is blind only at the $1 floor:
-floor reconciliation (a floored book cannot be suppressed anyway -- `slope()` is
-0 there) and the shed cap. `_drop_inventories_to_shed` keeps **100 items TOTAL
-across all products and discards the overflow**, so no estimate above ~100 is
-physically possible; that alone cut MILK's drift from 267 units to 24.
-
-The useful finding is what survives: **the opponent can never be sitting on a
-hoard**, so `N_them` is dominated by what their tiles will still produce, not by
-what they hold.
-
-- The structural forecast under-reads the truth ~2.5x (72.8 strawberry against
-  an actual 192.7) but has RANK: correlation 0.66-0.82 on the five products
-  that matter. A scalar gain fixes a bias, so the bias was left to calibration.
-- **Extrapolating their exact observed harvest rate instead is worse.** It
-  halves the bias and takes strawberry's correlation from 0.66 to -0.00 and
-  melon's from 0.80 to -0.04. Kept behind `blend`, defaulted off.
-
-### Why the market controller cannot use any of it
-
-Attributing every unit we offer to the branch that offered it (3 seeds, vs kawa):
-
-    shed-panic dump 79%     terminal dump 19%     the price gate 2-3%
-
-The reserve price, the front-run hold and the opponent's reserve scale together
-govern **one sale in forty**. The agent's real sell policy is "the shed passed
-20% -> dump everything", and that is also, by accident, why our realised $/unit
-is HIGHER than the tape's: dumping in small frequent batches meters the book.
-
-This is the true cause of the "identical rows" symptom in section 21. The gate
-is not merely unbinding on some parameter settings; it is nearly dead code.
-Every MV variant lands in noise -- MV ordering of the panic dump -34 (t=-0.0),
-alpha 0/0.5/1/2 all within 200, `SHED_PANIC_FRACTION` 0.10 exactly +0.
-
-Metering is worse than inert: -32,749 (t=-12.7). Holding stock fills the shed
-and stalls production, the same mechanism section 17 round 6 measured.
-
-### Why the scheduler cannot use it either
-
-`dynamic/task_value.py` prices every task through the live market -- a melon
-harvest and a wheat harvest score 900 apiece under `OP_VALUE`, though one is six
-units at $250 and the other six at $25. It is correct and it is **exactly +0
-over 144 paired games**, because:
-
-| day | tiles with work | op-turns wanted | crew turn cap | utilisation |
-|---|---|---|---|---|
-| 12 | 63 | 102 | 288 | 35% |
-| 18 | 63 | 92 | 264 | 35% |
-| 24 | 57 | 110 | 264 | 42% |
-
-**Mean 35%, max 43%, and demand exceeds capacity on 0 days of 30.** Task value
-only decides which work gets DROPPED, and nothing is ever dropped. `partition`
-assigns by angular sweep; value reaches `build_tour` only on over-subscription.
-
-So the whole objective `J = sum V_task - lambda*C_move` optimises an allocation
-problem with 65% slack, and every coefficient in it (lambda, alpha, K, gamma,
-beta) is unidentifiable by construction. This also explains `MIN_CREW` at -13k
-to -52k: we already hire hands with nothing to do.
-
-### What the audit says the gap actually is
-
-`dynamic/revenue_audit.py` prices both players' sales through the commit hook.
-Against kawa, 3 seeds:
-
-| | our units | our $ | their units | their $ |
-|---|---|---|---|---|
-| dynamic scheduler | 1,132 | 89,008 | 1,521 | **137,382** |
-| the tape | 1,704 | 91,889 | 1,704 | **91,734** |
-
-**Our own economy is fine -- our bank is 77,614 against the tape's 71,544 in the
-same matchup.** The entire gap is the second column. MILK is the clearest case:
-
-    against us      we sell 156 @ $138, they sell 265 @ $141   margin  -15,789
-    against the tape   248 @ $40,          249 @ $40           margin      -28
-
-**The tape does not win milk. It neutralises it**, and that is worth +15,761
-because the deficit it erases is larger than the revenue it gives up. Same shape
-on strawberry (-23,625, crushable to about -6,480).
-
-That is the mechanism, stated exactly, and it needs volume we do not have --
-1,132 units against 1,704. Suppression cannot be bought (`BUY_PRODUCT` quotes
-post-buy, so a round trip nets zero) and cannot be timed (we already dump
-continuously). **It has to be PRODUCED.**
-
-### Refuted tonight, with controls
-
-| lever | result |
-|---|---|
-| MV ordering of the shed-panic dump | -34 (t=-0.0) |
-| MV metering when we out-supply them | -32,749 (t=-12.7) |
-| MV re-pricing the sell gate, alpha 0..2 | all exactly +0 (gate not binding) |
-| economic task value in the scheduler | exactly +0 (capacity not binding) |
-| economic task value + triage | -869 (t=-1.1) |
-| WHEAT priority 0.014 -> 0.85 | **-75,378** (displaces melon/strawberry) |
-| ...with 12 / 18 wheat tiles | -123,861 / -91,455 |
-| 12 wheat tiles at current priority | -4,161 |
-| 6 geese (EGG trades $89, nobody produces it) | -49,999 |
-| feed buffer 1.0 -> 2.5 | -30,343 |
-
-Also measured and NOT a defect: **shed-overflow discards are 15 units a game
-against the tape's 21.** The nightly 100-item cap is not eating our output.
-
-### Status
-
-The suppression theory is sound and now has exact tooling behind it. Neither
-the market controller nor the day scheduler is the place it can act, and both
-were shown so by measurement rather than argument. The binding constraint is
-unchanged from section 19 and is now quantified from a second direction:
-**produce more units profitably.** Until that moves, this line stays at -90,650
-paired against the 9-agent pool while the shipped tape+market build is +9,016.
-
-### 22a. One thing that did work: refill dead tiles with wheat
-
-`_last_plant_day` is 19 for STRAWBERRY and 17 for MELON, but **25 for WHEAT**.
-After day 17 any tile that dies is dead for the season, because its own role can
-no longer return anything before the buzzer -- and our board loses 10 tiles over
-the last third (49 -> 39) where the tape holds ~70 flat. Replanting those with
-wheat costs $10 and displaces nothing.
-
-`NURSE_LATE=1, NURSE_CROP="WHEAT"`, paired margin against the 6-agent pool:
-
-| seed set | n paired | vs base | se | t | paired wins |
-|---|---|---|---|---|---|
-| 90210 | 144 | **+1,768** | 373 | 4.7 | 96/144 (67%) |
-| 4242 | 240 | **+1,893** | 286 | 6.6 | 166/240 (69%) |
-| 777001 | 360 | **+2,049** | 221 | 9.3 | 259/360 (72%) |
-
-Controls: `NURSE_LATE` with no `NURSE_CROP` is exactly +0, and
-`NURSE_CROP="MELON"` is exactly +0 -- melon can never be the refill because its
-own last plant day is 17. `SEED_BATCH_PER_TURN=16` on top adds ~+600 but its own
-control is only +822 (t=1.6), so it is not established on its own.
-
-**Mechanism confirmed, not assumed.** The two agents are byte-identical through
-day 19 and then diverge exactly as predicted:
-
-    day          15    17    19    21    23    25    27
-    baseline     47    48    47    43    43    42    37
-    late wheat   47    48    47    47    46    46    42     wheat 245 -> 282
-
-Now on by default in `dynamic/agent2.py`. Note for future sweeps: the baseline
-has moved, so an identity control has to set `NURSE_LATE=0`, not leave it unset.
-
-### The same idea at the other end of the season does NOT work
-
-Deferring expensive seed to follow the tape's cash-flow order is worse, and
-consistently: STRAWBERRY held to day 8 is -10,029, day 11 -14,860, day 14
--32,276. Strawberry is an ongoing crop with a **4-yield lifetime cap**
-(`production_count > max_yield` stops it, engine line 796), so every day it is
-held back is a yield it never takes. Nursing wheat through the gap recovers
-+4,000 to +6,000 of that but never the whole cost.
-
-Also refuted with controls tonight, all on the opening ramp:
-
-| lever | result |
-|---|---|
-| `BUY_ANIMALS_FIRST=0` (cheap seed before $400-500 animals) | **-17,719** |
-| ...with batch 16 | -18,558 |
-| `PLANT_MISS_TOLERANCE` 16 -> 0 / 2 / 4 | -1,214 / +1,311 / +183, all noise |
-| the 73-tile season plan (85 tiles realised) | -62,148 |
-
-The opening-order hypothesis was wrong in the direction it was proposed: animals
-first is right. They produce fertilizer unconditionally from day 1 and milk/wool
-for twenty-plus days, where a $100 strawberry seed returns nothing until day 12.
-
-### Why the 85-tile plan still fails, measured
-
-Crew capacity is NOT the reason, and the earlier reading of this was wrong on a
-subtlety: `_size_crew` sizes the crew TO the task list, so utilisation is pinned
-by construction at ~32% whatever the portfolio (50 tiles 35%, 85 tiles 32%,
-0 days over 100% in either). It measures the crew-sizing ratio, not slack.
-
-The real breakdown of where unit-turns go, against the tape on the same seed:
-
-    us, 50 tiles   move 43%  enable 33%  idle 13%  produce 5%  build 2%   5,485 turns
-    us, 85 tiles   move 47%  enable 30%  idle 12%  produce 4%  build 3%   5,330 turns
-    the tape       move 52%  enable 28%  idle  8%  produce 6%  build 4%   6,914 turns
-
-**Movement is not our problem -- we are better at it than the tape (43% vs 52%)
-and it still banks twice as much.** It simply does 26% more unit-turns and 2.5x
-more build ops. And under the 85-tile plan our cash sits at $0.3k from day 3 to
-day 15 while the tape is at $10.3k by day 12, so the extra tiles are planted and
-then die unwatered (19 tiles on day 3 down to 9 on day 6). More tiles without
-the cash to crew them is strictly worse, which is the sixth independent
-confirmation of that.
-
----
-
-## 23. Opportunity cost as a module, so the windows find themselves (2026-08-20)
-
-Section 22a's late-wheat refill was found by hand. It is one instance of a rule:
-
-    V_task = V_self + V_suppress - V_opportunity
-    V_opportunity(tile, t) = max over feasible c of E[Profit(c, tile, t)]
-
-After day 19 nothing but WHEAT and CARROT can still be planted, so the feasible
-set collapses to one useful element, `V_opportunity` goes to 0, and any
-positive-profit crop should be planted automatically. `dynamic/opportunity.py`
-computes the feasible set and each member's profit, so windows of that shape
-fall out of the arithmetic instead of being noticed.
-
-### E[Profit] is exact, and the two yield rules are different
-
-Both had been misread earlier in this project, so they are now written down:
-
-- **NON-ONGOING (WHEAT, CARROT, MELON).** `_new_plant` seeds `yield_units = 1`
-  and the nightly refresh SKIPS them entirely. Yield comes from WATER, and only
-  inside `[(max_yield_day+1)//2, max_yield_day]` (engine line 438-443). WHEAT
-  therefore makes 1 + 3 = **4 units for 6 unit-turns**; MELON makes 6 by age 10.
-  HARVEST then DELETES the plant, which is what lets it cycle a tile.
-- **ONGOING (STRAWBERRY, TOMATO).** `production_count > max_yield` stops accrual
-  permanently (engine line 796), so `max_yield` is a **LIFETIME cap**.
-  STRAWBERRY produces exactly 4 units, at ages 10/12/14/16. That is the
-  arithmetic behind deferral measuring -10,029 to -32,276 in section 22a: every
-  day held back is a yield never taken, not a yield delayed.
-
-### It reproduces the hand-found window and beats it
-
-`ALLOC_MODE=1` keeps a tile's searched role while that role is feasible and
-profitable, and otherwise plants the best thing that still is. Paired margin
-against the 6-agent pool, four disjoint seed sets, all against the same static
-base (`NURSE_LATE=0, ALLOC_MODE=0`):
-
-| seeds | n | hand-coded late wheat | alloc1 L13 | alloc1 L15 |
-|---|---|---|---|---|
-| 31337 | 240 | +2,311 (t=8.9) | — | **+2,938** (t=8.4) |
-| 606060 | 288 | +2,363 (t=8.7) | **+3,020** (t=10.7) | +2,872 (t=10.5) |
-| 818181 | 288 | +1,863 (t=7.6) | — | **+2,545** (t=7.6) |
-| 246810 | 288 | +2,229 (t=9.4) | **+2,631** (t=8.7) | +2,449 (t=8.0) |
-
-The allocator beats the hand-written rule by +500 to +680 on every set, at
-82% paired wins on the largest. `ALLOC_LABOR` is a **plateau over 13-17**, not a
-spike, with a cliff at 20 (-11,684) where strawberry's profit turns negative and
-the fallback abandons it everywhere. Shipped at 13.
-
-**`ALLOC_MODE=2` (always plant the argmax) is -53,163.** The searched static
-layout carries real information about WHERE a role belongs that a per-tile
-profit comparison does not have; the allocator is only allowed to act where the
-static answer has expired.
-
-### What it found on its own
-
-Instrumented over 3 seeds, substitutions of (searched role -> chosen crop):
-
-    MELON      -> WHEAT   days 20-27      the hand-found window
-    STRAWBERRY -> WHEAT   days 20-25      the same window, other tiles
-    STRAWBERRY -> MELON   days 18-19      NEW -- nobody had looked here
-    anything   -> None    days 28-29      correctly stops planting
-
-### A candidate the formula proposed and the engine rejected
-
-`_last_plant_day` keys on `max_yield_day`, but HARVEST is gated on
-`first_yield_day` (engine line 457) -- `max_yield_day` only bounds accrual. The
-true bound is later: **MELON 17 -> 19** (still its full 6 units, since the
-accrual window shuts at age 10 anyway) and **WHEAT 25 -> 27** (2 units, ~$100,
-on a $10 seed). Both have positive gross profit, and the STRAWBERRY -> MELON
-window above needs them.
-
-Measured: **-1,546 (t=-7.0) on its own, -1,656 with the allocator, -2,085 with
-the hand-coded refill.** So the flat $/unit-turn labour price understates a LATE
-planting: it waters every day until harvest against a crew that is winding down,
-and it finishes inside the terminal liquidation window where the turns are
-wanted for selling. Kept reachable as `TRUE_LAST_PLANT_DAY`, defaulted off.
-
-This is the formula-and-experiment loop behaving correctly. The module proposed
-three windows; the engine kept one, and the one it kept is worth more than the
-hand-written version of it.
-
-### Shipped defaults in `dynamic/agent2.py`
-
-    ALLOC_MODE = 1        ALLOC_LABOR = 13.0        TRUE_LAST_PLANT_DAY = 0
-    NURSE_LATE = 1        NURSE_CROP = "WHEAT"      (both bypassed while ALLOC_MODE is on,
-                                                     and worth +2,229 if it is turned off)
-
-`ECON_VALUE` remains exactly inert alongside all of this (+2,449 with and
-without), as section 22 predicted: nothing is ever dropped, so the thing that
-decides what to drop cannot matter.
-
----
-
-## 24. Global resource valuation: the veto works, the replacement does not (2026-08-20)
-
-`dynamic/enpv.py` implements the full framework -- ENPV per asset with an
-endogenous price, dynamic feed costing, a multi-dimensional knapsack, the labour
-shadow price, bundle ROI and a burn-rate cash reserve. Two wirings of the same
-correct valuation, and they differ by 95,000 paired margin.
-
-### The endogenous price is the piece a fixed-count portfolio cannot have
-
-`market_model.realized_price(item, inv, n, shops, days, opp_units)` returns the
-AVERAGE $/unit for selling n units over `days`, against the town's drain and the
-opponent's expected supply. A marginal quote prices one more unit; an asset
-produces many, and each lowers the price of the next:
-
-    n units sold over 18 days, opponent selling the same
-    item          n=20   n=50  n=100  n=200  n=400      drain/day
-    MELON          248    228    148     73     38          1
-    STRAWBERRY     228    219    203    151     11         25
-    EGG             55     54     51     43     41         13
-
-A genome storing TC_COW=5 prices all five cows identically. With the feedback
-in, the marginal animal is valued against the book the existing herd has already
-filled, and the numbers are decisive: at 6 sheep owned the seventh is worth
-**-118**, and the searched genome buys seven.
-
-### Wholesale replacement: -90,059
-
-`ENPV_BUY` replaces the searched purchase throttle with the knapsack. It starts
-BETTER -- 20 producing tiles by day 3 against the base's 8, which is the ramp
-this project has been chasing since section 19 -- and then collapses to 8 tiles
-by day 9 with cash pinned at $0.00. It spends every dollar on seed and cannot
-afford a single hand to water it.
-
-Two bugs found and fixed on the way, both worth keeping:
-
-- **The reserve must be sized to the crew the farm WILL need**, not the one it
-  has. Crew is sized to the current task list, so on day 0 it is 1 and a burn-
-  rate reserve built from it is about $2. (-115,067 -> -90,059 when fixed.)
-- **It needs a floor at SPEND_RESERVE.** The rest of the agent refuses to hire
-  while `money - cost < SPEND_RESERVE`, so a reserve below that number does not
-  under-save, it silently disables hiring.
-
-Even fixed it is -90,059, and insensitive to every parameter (L8 -88,718,
-L20 -115,359, dry-days 1/2/4 all within 600). That is a behavioural break, not
-a mis-valuation.
-
-### Subtractive: +4,208 mean over three seed sets
-
-`ENPV_VETO` keeps the searched purchase order exactly and only DECLINES a
-purchase whose ENPV has gone negative. It can remove spending, never redirect it.
-
-| ENPV_LABOR | 135791 (n=240) | 515151 (n=288) | 929292 (n=288) |
-|---|---|---|---|
-| **8** | **+3,626** (t=3.4) | **+4,619** (t=5.1) | **+4,378** (t=4.6) |
-| 10 | — | +4,876 (t=4.8) | +2,126 (t=2.0) |
-| 13 | +1,598 (t=1.4) | +4,681 (t=4.5) | +2,946 (t=2.8) |
-| 20 | -3,279 | — | — |
-| 30 | -27,650 | — | — |
-
-Shipped at 8, the stable point. Above ~20 the veto starts refusing purchases
-that pay.
-
-**The veto is inert while ALLOC_MODE=0** -- it needs `S["econ"]`, which is only
-built when the allocator or ECON_VALUE is on. Measured as two byte-identical
-rows, which is exactly section 21's symptom.
-
-### THE PATTERN, now established across five attempts
-
-| change | shape | result |
-|---|---|---|
-| opportunity allocator (ALLOC_MODE=1) | **additive** -- acts only where the static role has expired | **+2,865** |
-| ENPV veto | **subtractive** -- only removes negative-ENPV spending | **+4,208** |
-| ALLOC_MODE=2, free argmax layout | replacement | -53,163 |
-| ENPV_BUY, knapsack purchasing | replacement | -90,059 |
-| MV metering in the market layer | replacement | -32,749 |
-
-**The searched genome's parameters are co-adapted.** A principled subsystem
-dropped in on top of them breaks that co-adaptation faster than its own
-correctness repays. Every gain this session came from a change that acts only
-where the existing policy does nothing, or that only declines. Design new work
-to that shape.
-
-### Cumulative, one fresh seed set (n=336 paired)
-
-| build | paired margin | vs session start | t |
-|---|---|---|---|
-| session start | -80,909 | — | — |
-| + late wheat (hand-coded) | -78,605 | +2,304 | 9.3 |
-| + opportunity allocator | -78,044 | +2,865 | 10.7 |
-| **+ ENPV veto (SHIPPED)** | **-73,390** | **+7,519** | **8.5** |
-
----
-
-## 25. `MODEL.md` — the mathematics, in one place
-
-The derivations scattered through sections 22-24 are collected in
-[`MODEL.md`](MODEL.md), written as GitHub-rendered LaTeX so the formulas stay
-readable and reviewable rather than living in docstrings.
-
-It covers: the engine's price curve and its exact reproduction; the depth and
-recovery ratio that decide which books can be suppressed at all; the marginal
-value of a sale and the sign of its suppression term; the endogenous realized
-price; exact opponent sales and harvest recovery with the shed-cap and floor
-corrections; both yield rules; asset ENPV; the multi-dimensional knapsack, the
-labour shadow price, bundle ROI and the burn-rate reserve; and the opportunity
-cost that makes the "no-displacement window" fall out of arithmetic.
-
-Section 10 is the calibration table -- every coefficient names the data that
-fixed it. Section 11 is the refuted list, with the pattern that now governs how
-work here should be shaped: **additive or subtractive changes hold, wholesale
-replacements break.**
-
----
-
-## 26. The target, quantified — and three more refutations (2026-08-20)
-
-### What "beat our best model" actually means
-
-Measured on the SAME pool and the SAME seeds, paired margin, both seats
-(n = 336 paired games):
-
-| agent | paired margin |
-|---|---|
-| **shipped `submission/main.py` (tape+market)** | **+12,160** |
-| unmodified kawa tape | +11,628 |
-| dynamic scheduler, this session's best | **−73,390** |
-
-**The gap is 85,550, and the shipped agent wins 329 of 336 paired seeds (98%).**
-Note also that the whole market-intervention layer is worth only +532 over the
-raw tape on this pool — the tape is essentially all of it.
-
-### The tape's own season plan, read off its issued orders
-
-```
-day 0   MELON x12, WHEAT x7, buy_WHEAT x9, HIRE x5, COW x2, SHEEP x2
-        -> 23 producing tiles by day 1, on $3,094 of a $3,000 opening
-day 1-10   cash never rises above $1,534; it runs the entire ramp at ~zero
-day 11  cash jumps to $14,794 as the melon lands, and it buys 23 STRAWBERRY
-day 12  68 producing tiles
-```
-
-Twelve melon on day 0, against our `TC_MELON` of 8 for the entire season — and
-melon is the one book that never recovers (30 units of season demand against 158
-to the floor), so it is the one place quota preemption is real.
-
-### Three more refutations, and a sharper form of the pattern
-
-| lever | shape | result |
-|---|---|---|
-| mean-variance risk adjustment | subtractive | **inert** |
-| ENPV purchase ORDER (same budget, same caps) | re-ordering | **−12,542** |
-| melon-forward opening, TC_MELON 12 / 16 | portfolio | −21,056 / −25,428 |
-| ...with RP_MELON raised to 0.97 | portfolio | −34,036 |
-
-The risk adjustment is inert for a structural reason worth keeping: `ENPV_VETO`
-is a binary `ENPV > 0` test, so a variance penalty small enough not to refuse
-everything is too small to flip a sign. λ=1e-5 fires on 0% of games, 1e-4 on 2%
-(+11), 1e-3 on 31% (+228, t=0.5). Kept, defaulted off; it is the right object if
-ENPV is ever used for RANKING instead of a sign test.
-
-**`ENPV_ORDER` sharpens the pattern.** It changes nothing about how much is
-bought — batch sizes, per-turn caps and the reserve are untouched, and the same
-total is spent. Only the SEQUENCE changes, and only where cash binds. It costs
-−12,542. So the boundary is not "replacement vs addition" in any loose sense:
-
-$$\text{touching a co-adapted decision AT ALL} \Rightarrow \text{breaks}$$
-$$\text{acting only where the policy does nothing, or only declining} \Rightarrow \text{holds}$$
-
-### What this implies for the remaining gap
-
-Closing 85,550 by hand is not on the evidence available. Roughly 25 distinct
-levers have now been refuted across two sessions, spanning the market layer, the
-day scheduler, the portfolio, cash flow, opening order and global resource
-allocation. The three that worked total +7,519 and all three are additive or
-subtractive.
-
-The one honest lever left is not an insight, it is COMPUTE: `best_genome.json`
-was searched against `dynamic/agent.py` before any of the market model, the
-allocator or the veto existed, and it peaked at generation 1 and then went 17
-generations without improving. **It is an optimum of a different agent.** A
-search does not suffer the co-adaptation problem that every hand-written
-subsystem hit this session, because it re-adapts every parameter at once.
-
-`dynamic/search2.py` seeds from the current shipped configuration, puts the two
-new labour prices and the two new switches in the genome, and keeps the fitness
-unchanged (paired margin, common random numbers, both seats, ladder-range
-seeds). `ALLOC_MODE=2` and `ENPV_BUY` are deliberately NOT in the search space —
-both are measured strongly negative.
-
----
-
-## 27. Three modules built alongside the GA (2026-08-20, search running)
-
-`dynamic/search2.py` is running, so `dynamic/agent2.py` and everything in its
-import graph are FROZEN — workers re-exec it per evaluation. All wiring went
-into `dynamic/agent3.py`, a copy with the new switches defaulted off, so
-agent3 with no parameters is agent2 exactly.
-
-### 27.1 Fitted opponent supply — the strongest result of the three
-
-`dynamic/opp_predict.py`. Ridge least squares on eight public features
-(structural forecast, tracked holdings, exact harvest rate, exact sales rate,
-days left, their tiles of this item, their herd size). Held out **by GAME**, not
-by row — rows from one game share its board, shop draw and opponent, so a row
-split would report a fit that does not exist.
-
-| item | model bias / \|err\| / corr | structural bias / \|err\| / corr |
-|---|---|---|
-| STRAWBERRY | −0.9 / 11.3 / **0.99** | −136.4 / 136.4 / 0.54 |
-| MELON | −0.9 / 9.0 / **0.96** | −24.3 / 24.3 / 0.75 |
-| MILK | 1.3 / 11.6 / **0.97** | −75.7 / 75.7 / 0.65 |
-| WOOL | 0.5 / 12.5 / **0.92** | −47.7 / 48.0 / 0.80 |
-| WHEAT | 16.1 / 75.1 / **0.75** | −308.1 / 308.1 / **−0.48** |
-| FERTILIZER | 3.7 / 7.8 / **0.99** | 26.0 / 50.2 / 0.67 |
-
-The 2.5x bias is gone and correlation goes 0.54–0.80 → 0.92–0.99. Caveat: the
-held-out games share the same 6-opponent pool, so this is not evidence of
-transfer to an unseen opponent. Degrades gracefully — no theta means the
-structural forecast, i.e. agent2's behaviour.
-
-### 27.2 Market timing — one derived correction to a hardcoded list
-
-`dynamic/market_timing.py`. `_process_market` runs before `_town_consume` in
-the same step, so holding a sale across a town tick is quoted after the drain
-rather than before it, worth exactly
-
-$$\text{gain per unit} = |P'(q)| \cdot d_{\text{tick}}(i)$$
-
-| item | \|P'\| | tick drain | $/unit held | in `FRONT_RUN_ITEMS`? |
-|---|---|---|---|---|
-| MILK | 2.098 | 3 | 6.30 | yes |
-| WOOL | 2.322 | 2 | 4.64 | yes |
-| STRAWBERRY | 0.343 | 4 | 1.37 | yes |
-| **MELON** | 1.200 | **0** | **0.00** | **yes — and worth nothing** |
-
-**No shop sells MELON**, so its tick drain is zero and holding it gains $0 while
-donating a step to the opponent. Note this ranks the books the OPPOSITE way from
-suppression: suppression wants the books the town cannot refill, timing wants
-the ones it refills hardest.
-
-### 27.3 The spatial/VRP model — built, and it refutes its own premise
-
-`dynamic/spatial.py` implements the graph model, Manhattan `D(u,v)`,
-`TravelTime` over the solved tour, and the hard constraint
-$\sum L_{req} + \text{TravelTime} \le L_{max}$, using the real `partition` and
-`build_tour` rather than a formula.
-
-**At the crew the agent actually runs, nothing is dropped:**
-
-```
-73 tiles with 12 workers:  served 73, dropped 0
-50 tiles with 12 workers:  served 50, dropped 0
-```
-
-| workers | crop tiles servable | animal tiles servable |
-|---|---|---|
-| 8 | 65 | 37 |
-| 12 | 80 | 52 |
-| 16 | 100 | 67 |
-
-So the 73-tile collapse is **not** a routing failure and the hard constraint has
-nothing to bite on. It is the cash chain, as section 26 measured: more tiles →
-more crew → crew costs cash → no cash on days 3–15 → tiles die unwatered.
-
-The one genuinely useful number that fell out: **crew sizing that counts travel
-is roughly double what op-turn sizing says** (73 tiles needs 10 workers, op-turn
-sizing says 4). That is the same correction `enpv.crew_needed` already applies
-via TILES_PER_HAND, and it is now derivable instead of fitted.
-
-### 27.4 On bitmaps, space-filling curves, APSP and Hungarian assignment
-
-Assessed against this codebase rather than in general:
-
-- **Precomputed APSP / "never run BFS or A\* in the engine"** — already
-  satisfied by construction. `grep -rn "bfs|dijkstra|astar|A\*"` over
-  `route/ dynamic/ planner/` returns **nothing**: movement is unrestricted and
-  LOCKED tiles are passable, so `route/geom.dist` is plain Manhattan and already
-  O(1). There is no path search to remove.
-- **Space-filling curve for routing** — `partition` already sorts by an angular
-  sweep around the shed, which has the locality property a Z-order or Hilbert
-  index would provide. Same role, already present.
-- **Bitboards** — would speed up set operations, but speed is not binding: a
-  full game is 0.4s, the agent runs 85 tiles without incident, and nothing times
-  out. There is no crash to prevent.
-- **Hungarian / LAP instead of the greedy sweep** — the only one with real
-  algorithmic upside, and it has no slack to recover: at 12 workers the current
-  partition already drops zero tasks at 73 tiles. It is also a wholesale
-  replacement of a co-adapted component, which is the shape that has failed six
-  times here.
-
-### 27.5 A strictly better opponent estimate makes a strictly worse agent
-
-The fitted predictor is better on every metric that describes an estimator, and
-it measures **-18,502** in play. Two explanations were proposed and both were
-tested and refuted:
-
-| hypothesis | test | result |
-|---|---|---|
-| co-adaptation via `ENPV_LABOR` (calibrated against the biased forecast) | re-calibrate it | L8 -18,611, L6 -19,866, L4 -20,575, L2 -20,084, **L0 -20,400** — monotonically worse |
-| covariate shift (fit on games where the TAPE held our seat) | re-fit on OUR games, same held-out quality | **-18,502**, i.e. unchanged |
-
-Damage channels, isolated: `ENPV_VETO=0` recovers most of it (-18,502 ->
--5,488) and the remaining -5,488 is the opportunity allocator, whose
-`price_of` is `ctx.unit_price` and therefore also carries `N_them`.
-
-**So the BIAS was doing useful work.** Both consumers -- the veto by hand, the
-allocator by hand, and the portfolio by an earlier GA -- were tuned against a
-forecast that under-reads the opponent by 2.5x. Under-reading their supply makes
-the agent behave as though the books are emptier than they are, which makes it
-produce and sell more aggressively, and aggression is exactly what it lacks.
-Correcting the estimate makes it correctly timid.
-
-This is the sharpest statement of the session's pattern: **it is not that
-replacements are wrong and additions are right. It is that every hand-written
-component here is calibrated against the errors of the ones around it.** A
-component cannot be improved in isolation, however correct the improvement.
-
-The implication is a search, not another hand fix: put the predictor in the
-GENOME and let the search re-adapt its consumers around it. That is what
-`dynamic/search3.py` does.
-
-**Discipline note:** the `MV off` variant in that sweep returned a row
-byte-identical to its sibling because `MV_MARKET` was already 0. Section 21's
-rule applies to my own sweeps too — confirm a parameter is live before spending
-games on it.
-
----
-
-## 28. GA methodology: selection is sound, the recorded champion is not
-
-`dynamic/search2.py` and `search3.py` score each genome on 5 seeds x 6 opponents
-= 30 games, 15 paired. Section 5's rule says a variant needs >=100 games before
-its rank means anything, so that number deserved a second look. It splits into
-two questions with different answers.
-
-**Selection is fine.** The seed list is drawn once per generation and every
-genome in that generation plays the same seeds, so within-generation ranking is
-paired with common random numbers — the low-variance comparison. That is the
-only comparison selection pressure actually uses.
-
-**The recorded champion is biased upward.** `best_fit` is a running max across
-generations, and generation 6's best was scored on generation 6's seeds while
-generation 7's was scored on different ones. Taking a max over noisy draws from
-different distributions selects partly for a lucky seed draw, and the checkpoint
-saves whatever won that draw. So a headline like "-48,821 at generation 6" is
-not comparable to a hand-tuned number measured at n=336.
-
-**Consequence for anyone reading a `best_genome*.json`: re-measure it before
-believing it.** The fitness field records what won a 15-paired-game draw, not
-the genome's standing. `dynamic/mt_sweep.py` will load and re-evaluate any
-checkpoint at a real sample size.
-
-**Also: do not edit `dynamic/search3.py` while it runs**, not just the agent.
-The pool is recreated every generation with the forkserver context, so newly
-spawned workers re-import the main module and would pick up a mid-run edit.
-
----
-
-## 29. Paired win rate beats paired margin as an evaluation metric (2026-08-20)
-
-Measured head to head on variants of KNOWN effect size
-(`dynamic/metric_test.py`, 40 seeds x 6 opponents x both seats, n=240 paired):
-
-| variant | margin | t | win rate | t |
-|---|---|---|---|---|
-| exact null (identity) | +0 | **0.00** | 50.0% | **0.00** |
-| late wheat off | -8,172 | -8.23 | 22.5% | **-8.52** |
-| veto off | -4,931 | -4.79 | 32.7% | **-4.93** |
-| alloc off | -5,620 | -5.60 | 26.7% | **-7.23** (+29%) |
-| ENPV_LABOR=20 (known bad) | -4,154 | -2.73 | 37.1% | **-3.96** (+45%) |
-
-The win rate is more sensitive on every real effect and still returns exactly
-zero on the null. **The advantage grows with how noisy the margin is**, because
-margin variance is carried by a few blow-out games while a win rate caps each
-seed at +-1. Small-perturbation changes gain only 4%; noisy ones gain 29-45%.
-
-**Genome-level comparisons are the noisiest case there is** (sd ~32,500 per
-paired game against ~4,200 for a small additive change), so this is worth most
-exactly where the GA operates. `dynamic/search3.py` now scores in percentage
-points above 50.
-
-**HANDOFF rule 1 still stands and is not violated by this.** Raw win rate is
-invalid -- seat asymmetry gives a byte-identical mirror 15% at seat 0. What is
-used here is a PAIRED win rate against a reference on the same seed, and a true
-mirror scores margin exactly 0 on every seed, so it TIES rather than losing.
-Ties are excluded from the rate (standard sign test) and reported, and the smoke
-test confirms the reference against itself returns +0.0pp at 0-0.
-
-## 30. Zero-drag cash: refuted three times, and the idle cash is not a defect
-
-From day 12 the agent holds a mean of $22,900 idle, ends at $49,562, and leaves
-FIFTY TILES LOCKED. The land guard is circular -- `wanted` needs a role in a
-quadrant we have not bought, and no role is assigned to a quadrant we do not
-own -- so the third quadrant is never purchased however much cash accumulates.
-
-Three independent implementations of the zero-drag policy, all negative:
-
-| version | fix attempted | result |
-|---|---|---|
-| v1 | as specified | -37,683 |
-| v2 | price each new tile against the ones just added | -36,592 |
-| v3 | gate on the DAY (d14 / d17 / d20) | -27,835 / -19,387 / **-18,143** |
-| any | **land purchase disabled** | **+25 to +1,423 (t~0)** |
-
-The separation variant is the whole story: **buying the quadrant is the
-negative, not the extra tiles.** Three hypotheses tested and refuted along the
-way -- it is not distance (the shed is central, all four quadrants average 4.00
-and 12 workers serve all 75 tiles with 0 dropped), not endogenous pricing (fixed
-in v2, no change), and not ramp timing (d20 still -18,143).
-
-The mechanism, from a direct trace: the expansion WORKS mechanically -- live
-tiles go 43 -> 69 -- and nothing dies unwatered (`consecutive_unwatered` stays
-0). But both banks fall, ours 49,562 -> 32,129 and theirs 75,249 -> 58,743. The
-new tiles are planted around day 20 and mostly cannot yield before the buzzer
-(`yield_plan` gives melon 0 units from day 20), so they crash the shared price
-level and consume crew turns while returning almost nothing.
-
-**And the land cost is never charged.** `enpv.enpv_land` exists and was never
-wired into the expansion: it buys a $2,000-4,000 quadrant to gain 25 tiles worth
-about $112 each at day 20. That is the arithmetic, and it is negative.
-
-**Conclusion: the $22,900 of idle cash is a correct valuation, not a defect.**
-There is nothing left worth buying with it. Do not re-attempt land expansion
-without first passing `enpv_land`.
-
-### 30.1 The agent's OWN land purchase is ENPV-justified (a valid null)
-
-`LAND_ENPV_VETO` prices the quadrant the agent already buys and declines it if
-the tiles cannot repay the land. It measures **exactly +0 at every
-`LAND_USABLE_FRAC`** — and this is a valid null, not the inert-parameter
-symptom, which was checked rather than assumed:
-
-```
-enpv_land evaluated 708 times, negative 233 times
-  day  quad   $/tile  tiles   ENPV_land
-    0     0    1,274     15     +18,110
-   14     1      594     15      +6,909
-   29     1        0     15      -2,000
-```
-
-It is strongly positive at every moment the agent actually buys (day 0 and
-day 14) and only negative at day 29, when no crop can yield before the buzzer
-and the agent would not buy anyway. So the framework confirms the existing
-behaviour: the first quadrant is worth +$18,110 and the second +$6,909.
-
-That also cross-checks section 30 from the other side — land is worth buying
-EARLY and not late, which is exactly why the zero-drag expansion (buying a third
-quadrant around day 20) measured -18,143.
-
-### 30.2 The GA finds no improvement over the hand-tuned reference
-
-Four generations under the win-rate fitness, every generation's winner
-re-confirmed on disjoint seeds:
-
-| gen | in-generation | confirmed | W-L |
-|---|---|---|---|
-| 0 | +5.6pp | **-5.6pp** | 96-120 |
-| 1 | +9.7pp | **-6.0pp** | 95-121 |
-| 2 | +0.0pp | +0.0pp | 0-0 (the winner WAS the reference) |
-| 3 | +11.1pp | **-11.9pp** | 82-133 |
-
-`best` remains +0.0pp: **nothing has beaten the seeded reference.** Every
-apparent winner is in-generation noise, and the confirmation pass catches each
-one. Generation 2 is the cleanest evidence — the reference itself won its own
-generation.
-
-This is the same conclusion the margin-based run reached, now with a metric that
-is 29-45% more sensitive and a confirmation gate that cannot bank noise. The
-hand-tuned configuration this session produced is at a local optimum that random
-mutation is not escaping.
-
----
-
-## 31. The sell threshold: the largest confirmed effect of the session (2026-08-20)
-
-`SHED_PANIC_FRACTION` governs the branch that offers **79% of all units we
-sell** ("shed passed X% -> dump everything"). Moving it off the searched value
-of 0.25 wins overwhelmingly on WIN RATE while leaving mean margin at zero.
-
-Baseline `best_genome3.json`, three disjoint seed sets:
-
-| value | margin | margin t | win rate | win rate t | W-L |
-|---|---|---|---|---|---|
-| 0.25 (baseline) | +0 | — | 50.0% | — | — |
-| **0.35** | -45 | -0.24 | **88.6%** | **10.98** | 179-23 |
-| **0.40** | +28 | 0.09 | **83.6%** | **12.11** | 271-53 |
-| **0.45** | +182 | 0.57 | **77.6%** | **10.02** | 256-74 |
-| 0.60 | +146 | 0.44 | 61.3% | 4.15 | 206-130 |
-| 0.75 | -352 | -0.99 | 48.8% | -0.44 | 164-172 |
-| 0.90 | -1,701 | -4.10 | 40.5% | -3.49 | 136-200 |
-
-**Margin is zero throughout and win rate is t=10-12.** Under the project's
-standard metric this effect is invisible; it exists only because the evaluation
-moved to a paired win rate. Since `publicScore` is a skill rating driven by
-match outcomes (section 7), win rate is the metric aligned with the objective.
-
-**Consequence: every margin-scored sweep in this document may have missed
-effects of this shape.** Re-scoring the important ones under win rate is worth
-doing before trusting any of their nulls.
-
-### A methodology failure that nearly buried it
-
-The first confirmation run reported all four coordinate-descent candidates as
-refuted, `SHED_PANIC=0.40` at t=-1.27. That run loaded `best_genome.json` as its
-baseline while the run it was confirming had loaded `best_genome3.json`. Same
-parameter values, two different references, so neither direction meant anything.
-`dynamic/cd_confirm.py` now takes `BASE_CKPT` from the environment and PRINTS
-it. **A confirmation must state which checkpoint it is confirming against.**
-
-## 32. RL on the scheduler: interface built, identity control passes
-
-The policy sits on top of the scheduler and answers four decisions rather than
-emitting raw ops, which collapses the action space, keeps the model shippable
-(1-5M params, not 200M), and preserves the scheduler as a fallback.
-
-`dynamic/rl/encode.py` -- 10x10x21 spatial per farm + 86 scalars = 4,286 floats,
-0.29 ms. Opponent holdings are an INTERVAL, not a point estimate: the tracker's
-ledger gives the lower bound, floor-sale invisibility gives the upper, and the
-100-item shed caps the vector. Width is fed in as an explicit confidence signal.
-
-`dynamic/rl/policy_api.py` -- two cadences, because encoding is not free at 720
-steps a game: a strategic head once a DAY on the full observation (30 calls),
-and a sell head every turn on the market scalars only (86 floats, ~25x cheaper).
-
-`dynamic/rl/agent_rl.py` -- agent4 with the four hooks. **With a ScriptedPolicy
-it reproduces agent4 byte for byte on 4 seeds** (47,669 / 55,035 / 67,210 /
-91,945). That identity is the control for the entire RL line.
-
-Section 31 is the evidence that the sell head is where the value is: one
-CONSTANT in that branch is worth 88.6% win rate. A state-dependent policy with
-the price slope, the drain rate and the opponent belief interval in front of it
-has strictly more to say there.
-
----
-
-## 32. Tape distillation fails the same way action cloning did (2026-08-20)
-
-Section 21 recorded behavioural cloning from the tape reaching 92.8% action
-accuracy and banking $288, the failure being covariate shift. The obvious
-response is to clone something lower-dimensional, and that was tried properly:
-`dynamic/rl/distill.py` clones DECISION CONDITIONS at the scheduler's own
-decision points -- which crop to plant, how many hands, whether to buy land,
-which animal, what fraction of holdings to sell -- 30 decisions a day over 122
-NAMED features, with our scheduler still executing every unit move.
-
-The fit is good. Held out BY GAME, lift over the majority class:
-
-| head | model | majority | lift |
-|---|---|---|---|
-| animal | 100.0% | 75.9% | **+24.1** |
-| sell | 91.1% | 76.6% | **+14.5** |
-| crop_pref | 89.7% | 79.3% | **+10.3** |
-| buy_land | 99.1% | 93.1% | +6.0 |
-| crew_delta | 100.0% | 96.6% | +3.4 |
-
-**And it plays 46,972 worse than the scheduler it replaces** (t=-12.97, 14 wins
-to 130 losses over 288 paired games).
-
-The argument for why this would differ from section 21 -- low-dimensional,
-condition-level, executed by our own scheduler so the learner cannot leave the
-expert's trajectory -- is WRONG, and the reason is worth stating exactly. The
-tape plants wheat on day 3 because ITS board has 23 producing tiles by then;
-ours has 8. The rule learned is "plant wheat when our.WHEAT=0.4 and cash=0.1",
-and our scheduler never visits that state. Cloning conditions instead of actions
-lowers the dimension of the map but does nothing about the domain it is fitted
-on:
-
-    P_tape(x) != P_scheduler(x)  =>  argmax_a pi_tape(a|x) is meaningless on
-                                     the x we actually visit
-
-**Do not re-attempt tape initialisation** without first solving the
-distribution mismatch, and note that DAgger cannot: a fixed 719-step action list
-cannot be asked "what would you do with only 8 tiles".
-
-### What this does NOT refute
-
-The white-box linear policy itself is unaffected and is kept. Both heads are now
-linear softmax over named features -- 2,337 + 3,922 = 6,259 coefficients against
-the MLP's 2,524,600, 0.01 MB against 5.0 MB -- with the exact identity
-initialisation preserved, numpy inference matching torch term for term, and
-`explain()` / `rules()` printing the policy as text. The board is compressed to
-36 named statistics (`encode.extract_board_features`), which was the only reason
-the daily head could not be read.
-
-The correct path is that architecture initialised at the SCHEDULER identity
-(-71,384) rather than at the tape (-118,356), with PPO from there.
-
----
-
-## 33. Five ways of asking "is it the decisions?" — all say no (2026-08-20)
-
-A full day spent on the hypothesis that the scheduler picks the wrong actions.
-Five independent attacks, five negatives, and together they locate the problem
-somewhere else entirely.
-
-### 1. Decision trees from the top of the ladder: -116,035, 0 wins in 24
-
-`dynamic/tree/` extracts 1,479 day-rows from 193 replays covering the ELEVEN
-strongest teams we hold games for (VanKoha 126k mean bank, 我的AI是GPT 119k,
-ReCurSiON 118k, HKmgikao 117k, peikopon 116k, tetsuya 113k, mandgeee 112k,
-Thomas Tschinkel 112k, Galaxantic 109k, カワシギ 109k, Eddy Despradel 105k), and
-fits a hand-written depth-3 CART per decision head.
-
-**The fit is genuinely good, and held out BY TEAM** -- rules from ten players
-predicting the eleventh:
-
-| head | leave-one-team-out | majority | lift |
-|---|---|---|---|
-| crop | 86.8% | 62.2% | **+24.6** |
-| hire | 95.1% | 81.2% | **+13.9** |
-| animal | 85.0% | 77.5% | +7.5 |
-| land | 96.8% | 92.0% | +4.8 |
-
-In play it is **-55,671 against the scheduler baseline** (t=-19.5) and **head to
-head against every build we have submitted, -116,035 with 0 wins in 24**. Adding
-the tree takes us from -65,896 to -116,035 against the shipped agent.
-
-This was supposed to differ from section 32, and the argument was explicit: the
-top ladder is ADAPTIVE (section 10 measured 37-65% self-agreement), so cloning
-them clones a function, not a trajectory. **The leave-one-team-out result proves
-the function generalises ACROSS THEM and it still does not transfer to us**,
-which is the sharper form of the lesson:
-
-    P_top(x) overlapping each other  does NOT imply  P_ours(x) in supp P_top
-
-### 2. The distribution distance, measured
-
-Profiling our own states against theirs on producing tiles, strawberry tiles,
-readiness, cash and shed fill:
-
-| | producing | strawberry | cash |
-|---|---|---|---|
-| **us** | **0.384** | **0.378** | **0.350** |
-| nearest (peikopon) | 0.716 | 0.761 | 0.574 |
-| furthest (HKmgikao) | 0.751 | 0.937 | 0.672 |
-
-All eleven cluster together at distance 0.58-0.75 from us while sitting 0.17
-apart from each other. **There is no in-distribution strong player on this
-ladder, because being strong IS being big.** The tree's largest leaf (n=850,
-95% pure) requires `our.STRAWBERRY > 0.700`; our mean is 0.378, so we never
-reach the branch that carries the rule.
-
-### 3. More data cannot fix it — the learning curve is flat
-
-| rows | crop | hire | animal | land |
-|---|---|---|---|---|
-| 134 | 73.3% | 86.4% | 76.5% | 92.0% |
-| 672 | 85.0% | 95.1% | 85.3% | 91.4% |
-| 1,344 | 86.8% | 95.1% | 85.0% | 96.8% |
-
-Saturated from 50% of the data onward: doubling it buys +1.8pp on crop and
-nothing anywhere else, and the failure happens at 86.8%. **Do not download more
-replays for this purpose.** Section 21 already said it -- more on-distribution
-samples say nothing about off-distribution states -- and this is the measurement.
-
-### 4. The shipped MARKET layer does not transfer either: +290 +- 3,900
-
-The shipped build is tape PLUS market overlay, and every experiment before today
-touched only the farming half. `pbt/intervene.py` is a pure wrapper -- it edits
-market orders and never a tile -- so it bolts onto our scheduler unchanged
-(`dynamic/tree/bake_overlay.py`). It is worth +1,611 on the tape.
-
-On our scheduler it is **+290 on a standard error of 3,900**, against every
-rival. The mechanism explains it: the overlay pushes stock into the book ahead
-of the opponent's predicted sale, and it needs stock to push. Section 22
-measured 79% of our units leaving through the shed-panic dump, so by the time
-the overlay wants to act we are empty. **The market layer is an amplifier of the
-tape's production, not a portable gain.**
-
-### 5. The endgame is already optimal, and worth +-600 total
-
-Rollout search on OUR OWN states, branching at day 22 and playing 12 terminal
-policies to the buzzer, 768 rollouts (`dynamic/endgame.py`). Cheap where a
-day-3 rollout is not: 0.1s from day 25 against 0.59s from day 3.
-
-**Nothing beats the current setting.** The best two variants are +0; the whole
-searchable range is ±600, which is 0.9% of the 67,928 deficit. `TERMINAL_STEP`
-700-712 costs -299 (stock unsold), `SHED_PANIC_FRACTION` 0.70 costs -554
-(hoarding hits the 100-item shed cap) -- two independent reproductions of
-section 17's "holding stock for price is catastrophic".
-
-And the premise that the endgame would be in-distribution is **backwards**: the
-distance to the top ladder is 0.40 over days 6-11 and **1.33 over days 18-23**,
-where they work ~74 producing tiles and we work ~40. The endgame is where we
-differ MOST.
-
-### What all five have in common
-
-Not one is a decision-quality problem. Every road ends at the same place, now
-measured from five directions plus the shadow price of section 34: **our farm is
-half the size of theirs, and the difference is set in the first ten days.**
-
-    day 12 producing tiles     us 37        the tape 68
-    cash on hand, days 2-8     us $171-360  the tape $10,300 by day 12
-    lambda(0-9)                2.00 +- 0.19 -- a dollar then is worth two later
-    lambda(>=10)               1.00 +- 0.00 -- and after, worth exactly itself
-
-**The only unrefuted direction with a quantified target is early capital.**
-
-### 4b. The route table is now addressable — v3, 2026-08-21
-
-Four derived builds off `submission/v3_base.py`, all verified equivalent. Three
-are that file byte-for-byte plus one appended block; the fourth (`v3_expanded.py`)
-appends nothing and only rewrites the blobs in place. **The flat array supersedes
-the tree.**
-
-| build | tool | bytes | block | lookup |
-|---|---|---|---|---|
-| `submission/v3_tree.py` | `pbt/treeify.py` → `treeroute.py` | 196,410 | 41,105 B base64 CART | ~13 compares + decode |
-| **`submission/v3_flat.py`** | `pbt/flatify.py` → `flatroute.py` | 158,663 | **3,358 B** plain source | one index |
-| `submission/v3_expanded.py` | `pbt/expand.py` | 1,463,844 | all 12 blobs as literals | unchanged |
-| **`submission/v3_flat_expanded.py`** | both | 1,467,202 | flat array + no blobs at all | one index |
-
-Ship `v3_flat.py`; read and edit `v3_flat_expanded.py`. All four are equivalent.
-
-The CART was structure for its own sake: its leaves were already `(table, step)`
-references, so nothing ever depended on the branch structure, and its only real
-product was the substrate. A flat array is a strictly better one.
-
-**The state space, written down.** A route decision is a function of exactly
-three things and the tape always knew it:
-
-```
-legacy in {0,1}   _kawa_use_legacy_layout(obs)   per-seat latch, stateful
-label  in {0..4}  _kawa_route_label(obs)         pure
-step   in {0..718}
-s1 = (legacy * 5 + label) * 719 + step            |s1| = 7,190
-```
-
-**Key space and reference space are the same integer space** — `s1` decomposes
-as `table * 719 + step` because the table index *is* `legacy * 5 + label`. So
-identity is `_FR_CODES[i] == i` and there are two edit primitives:
-`_FR_REMAP[i] = j` (state i plays state j's action; one int, always legal) and
-`_FR_EDITS[i] = act` (novel action). The 7,190 identity ints are NOT written out
-— that costs 42,028 bytes of source to say nothing, more than the blob it
-replaces — so the array is `list(range(7190))` plus sparse deviations, still a
-real mutable list at runtime.
-
-Both builds rebind `_kawa_actions` to return a proxy (`__len__` + `__getitem__`)
-so ALL THREE readers resolve together — the base lookup, `_trace_actor_action`
-(current step, weed replay) and `_future_sells` (step + 1, pre-empt borrow). An
-edit is coherent everywhere by construction rather than by remembering to patch.
-
-**No numpy in the agent, numpy in the tooling.** The lookup runs 2,160×/episode
-where boxed numpy scalar indexing is *slower* than list indexing, and stdlib-only
-imports are worth keeping in someone else's sandbox. Vectorised work lives in
-`dynamic/tape/route_array.py` (`RouteArray.load/key/unkey/keys/action/
-fingerprints/diff/measure_reach/patch`).
-
-**No opponent axis, deliberately.** The opponent enters the eleven guards, not
-the route. `(opp, legacy, label, step)` is a one-multiply change if ever
-justified, but it multiplies parameters by |s2| against a fixed-size pool —
-harder search before better agent. Condition in the guards, where it is free.
-
-**Do not re-bake this one.** v3's market layer came from an older
-`pbt/intervene.py` (no `_IV_STRUCT` / `_IV_MIN_PRICE` / `_IV_STAGED`), so
-`route/bake.py` would silently swap it for today's. Both tools copy and append.
-
-**All twelve blobs are now expandable** — `pbt/expand.py` rewrites every
-`json.loads(zlib.decompress(base64.b85decode(...)))` as literal source, one row
-per line with its step number: the ten route tables AND the two market tapes
-`_V17_R5_MARKETS` (720 rows) / `_V17_MD_MARKETS` (719). Blobs are found by
-**AST** — any module-level assign whose value contains a b85/b64 decode call —
-not by name, because a regex on `_ACTIONS_` skips the market pair, which is the
-half nobody had ever read. Values come from *executing the file*, so what is
-written is what that file produced. Both market guards are live: over 20 pool
-episodes `_v17_r5_counter` changed the action on 16 turns, `_v17_md_counter` on
-140, so the gameplay runs do exercise them.
-
-That gives a THIRD editing surface — edit `_ACTIONS_8C6S_3Q[30]` in place, in
-readable source — alongside `_FR_REMAP` (re-point) and `_FR_EDITS` (novel
-action). Reach for the in-place edit when you know what you want the step to do;
-the dicts are for programmatic search.
-
-**Expansion costs 8x cold import** — 0.047s → 0.387s, file 155 KB → 1.46 MB,
-episode wall +7.6% under the real engine. Nothing is near a timeout, so this is
-a preference: ship `v3_flat.py` (+0.1%), read and edit `v3_flat_expanded.py`.
-**Warm `__pycache__` reports expansion as 73% FASTER and that number is a lie** —
-the 1.5 MB parse caches to .pyc while the compact file's zlib decode reruns
-every import. Kaggle writes the file and imports it, so the parse is paid.
-`expand.py --check` measures in a fresh temp dir for exactly this reason.
-
-Side-by-side copies and the full write-up live in `v3_compare/`, including
-`market_tapes.py` — the two market tapes alone, expanded, for reading.
-
-| check | tool | tree | flat | expanded | flat_expanded |
-|---|---|---|---|---|---|
-| route keys | — | 7,190/7,190 | 7,190/7,190 | — | 7,190/7,190 |
-| blob values after expansion | `expand.py --check` | — | — | **12/12** | 12/12 |
-| pool games, per-seed final banks | `dynamic/tape/v3_bench.py` | 120/120 | 72/72 | 72/72 | 72/72 |
-| self-play `*_vs_base` paired margin | `v3_bench.py` | **+0**, 0/16 | **+0**, 0/12 | **+0**, 0/12 | **+0**, 0/12 |
-| self-play `base_vs_base` (identity control, §21) | `v3_bench.py` | **+0**, 0/16 | **+0**, 0/12 | **+0**, 0/12 | **+0**, 0/12 |
-| real engine, by file path (rule 3) | `v3_submit_check.py` | 30/30 | 30/30 | 30/30 | 30/30 |
-| episode wall time | `v3_submit_check.py` | +0.3% | +0.1% | +7.6% | +7.4% |
-| Kaggle entry point | `--check` | `_treeroute_entry` | `_flatroute_entry` | `_submission_entry` | `_flatroute_entry` |
-
-`V3_LAYER=tree|flat|expanded|flat_expanded` selects the build on both harnesses.
-`v3_submit_check.py` needs `~/kagg-env` — `kaggle_environments` is not in the
-default interpreter, and it is a LOCAL check that never contacts Kaggle.
-
-**Both edit surfaces were proven load-bearing by sabotage**, at reachable state
-749 = `(0, '8c6s_3q', 30)`, seed 9000 vs `strong-barnyard-economist`: baseline
-76,829 → `_FR_EDITS[749] = PASS` gives 55,293 → `_FR_REMAP[749] = key(0,'10c4s_3q',0)`
-gives 77,557. A *first* remap attempt returned 76,829, unchanged, and that was
-not dead code — `_ACTIONS_10C4S_3Q[30]` is byte-identical to `_ACTIONS_8C6S_3Q[30]`,
-so it asked for nothing. §21 again: an identical row can mean **inert**, not
-neutral. Check which before concluding.
-
-**Reachability, measured with every read instrumented** (both flat readers plus
-the weed replay and the step+1 peek), five-opponent pool × 3 seeds × both seats:
-
-```
-reachable 2,205 / 7,190 states (30.7%)
-  legacy=0  10c4s_3q   647 states, steps  72..718
-  legacy=0  8c6s_3q    719 states, steps   0..718   <- the workhorse
-  legacy=1  10c4s_3q   647 states, steps  72..718
-  legacy=1  8c6s_3q    192 states, steps  24..215
-  never selected: 6c8s_3q, 6c12s_4q_first_yarn, 6c12s_4q_second_yarn (both legacies)
-```
-
-Six of the ten tables are never selected against this pool — 4,985 dead states.
-Search the mask, not the space, and always report the mask size with the result:
-"no improvement in 7,190 states" and "no improvement in 2,205 states" are
-different claims. `RouteArray.measure_reach()` recomputes it for another pool.
-
-Two drivers on purpose: `planner.simulate` is ours and fast, but only
-`kaggle_environments` scores the competition. Status matters as much as the bank
-— an agent that raises is marked INVALID and forfeits, and a forfeit still
-produces a plausible-looking number.
-
-**The load-bearing test is the one that matters.** Identical output also has an
-innocent explanation — the block being dead code — which would make every row
-above vacuous. Both edit surfaces were sabotaged at a reachable state
-(`(0,'8c6s_3q',30)` = 749), seed 9000 vs strong-barnyard-economist:
-
-```
-flat                                   76,829
-+ _FR_EDITS[749] = PASS                55,293
-+ _FR_REMAP[749] = key(0,'10c4s',0)    77,557
-```
-
-The first remap attempt pointed at `10c4s_3q` step **30** and returned 76,829,
-unchanged — and that was **not** dead code: `_ACTIONS_10C4S_3Q[30]` is
-byte-identical to `_ACTIONS_8C6S_3Q[30]`, so it asked for nothing. §21 again: an
-identical row can mean **inert**, not neutral. Check which before concluding.
-
-Equivalence is a property of a BUILD, not of the generator. The tree template
-briefly carried verification numbers in a comment and they were *kawa's*, in a
-v3 file. Rerun both checks after regenerating.
-
-**Reachability, measured** (every read instrumented incl. replay and step+1 peek,
-5 opponents × 3 seeds × both seats) — supersedes the earlier 2,133/29.7% figure:
-
-```
-reachable 2,205 / 7,190 (30.7%)
-  legacy=0 10c4s_3q   647 states, steps  72..718
-  legacy=0 8c6s_3q    719 states, steps   0..718    <- the workhorse
-  legacy=1 10c4s_3q   647 states, steps  72..718
-  legacy=1 8c6s_3q    192 states, steps  24..215
-  never selected: 6c8s_3q, 6c12s_4q_{first,second}_yarn, both legacies
-```
-
-**Six of the ten tables are never selected at all.** Search the mask, not the
-space, and report the mask size with any result: "no improvement in 7,190
-states" and "no improvement in 2,205 states" are different claims.
-
-So section 4 is now narrower than it was. The *table* is editable — per state,
-coherently at all three read sites. What section 4 measured and what still
-stands is that edits are mostly CATASTROPHIC: single-step PASS at steps 0-20
-costs -6k to -299k (`dynamic/tape/leaf_scan.py`). Steps > 100 are untested and
-are the only place a soft state is likely. **Editability is a substrate, not a
-gain — this ships at v3's score, to the dollar.**
-
-Pool numbers for v3 itself, 100 games (**not** evidence about the tree):
-
-| opponent | games | win | mean margin |
-|---|---|---|---|
-| strong-barnyard-economist | 20 | 100% | +14,119 |
-| kaggriculture-3000-socre | 20 | 100% | +5,983 |
-| kaggriculture-rank-your-agent | 20 | 80% | +7,768 |
-| v111-8c4s-economic-core-premium-lead | 20 | 80% | +7,111 |
-| kaggriculture-multi-route-farming-agent | 20 | 85% | +680 |
-| **total (deduped)** | **100** | **89.0%** | **+7,132** |
-
-`opponents/kaggriculture-ttv1.py` and `opponents/kaggriculture-3000-socre.py`
-are BYTE-IDENTICAL (md5 `694c736a…`). Any round-robin listing both
-double-weights that agent; the row above is deduped, the raw run said 90.8%.
-**Check the pool for duplicates before reading a total.**
-
-**`submission/v3_base.py` arrived truncated** and was repaired. Pasted through
-the terminal, all ten table lines were cut at exactly 4,095 chars. The file
-still looked complete — every `def` and every blob start is at column 0 and
-survived — which is why a grep-level check passed it; that check was wrong. All
-five other builds of this lineage carry those ten lines byte-identically and
-each is a strict extension of the truncated prefix, so restoration was
-unambiguous (verified: 719-step tables, both market blobs, `__version__`,
-`dump=0.8 lead=3` with no `_IV_STRUCT`, `PMB=30 PMFQ=0`). Truncated original at
-`submission/v3_base.py.truncated.bak`. **Check line lengths, not just symbol
-presence, on any agent file that arrives by paste.**
-
----
-
-## 36. What a route edit costs: the fidelity curve (2026-08-21)
-
-Section 4b proved the edit surfaces are load-bearing by sabotage — one state set
-to PASS moved a game 76,829 → 55,293. This is the same question asked as a
-curve: blend the route table with a fitted decision tree at a controlled rate
-`p` and sweep it (`dynamic/tape/fidelity.py`, 768 games, 3 opponents × 16 seeds
-× both seats, paired).
-
-| deviation | paired margin | win rate |
-|---|---|---|
-| **0%** | **+7,099** | 67% |
-| **1%** | **−73,448** | 8% |
-| 2% | −179,626 | 0% |
-| 5% | −281,257 | 0% |
-| 100% | −302,365 | 0% |
-
-**About −80,000 per 1% of deviated unit-orders**, and by 5% it is already at 93%
-of the loss from replacing the route entirely. The two measurements agree:
-section 4b's single-state PASS is 1 of 2,205 reachable states, and it cost
-−21,536 on one seed — steeper than this curve's average, which is what a
-load-bearing state looks like.
-
-**Use this as the budget for any edit.** A change that improves one state has to
-beat roughly 80,000 × (deviated fraction) to break even, and `_FR_EDITS` at a
-single reachable state is ~0.05% of the mask. That is why section 4b's remap
-(+728) is a real result and why blanket rewrites are not.
-
-### The corollary: a state-conditional tree cannot replace the route
-
-Asked directly, and worth recording so it is not re-attempted. A depth-9 CART
-over 30 named per-unit features (position, tile state, neighbourhood, day, cash,
-crew, opponent aggregates — no step index), trained on 82,968 unit-turns from
-the tape, held out by game:
-
-    stage 1, op        61.6%      stage 2, movement direction   49.3%
-
-Dropped into the pipeline in place of the route, guards intact:
-**−305,485 paired, 0 wins in 144.** Adding the market overlay changed nothing
-(identical to the digit) because the agent never accumulated stock to sell.
-
-The ceilings behind that, all measured:
-
-| representation | reproduction |
-|---|---|
-| `(label, step, unit)` — the route's OWN index | 83.1% |
-| ...plus weed count | 91.5% |
-| state-conditional, no step | 61.6% / 49.3% |
-
-Even keyed on the route's own index the ceiling is 83.1%, because
-`_weed_repair_action` carries cross-turn state and `_align_hands` depends on
-where hands spawned — neither is in the observation. And 83.1% fidelity sits far
-below −281,257 on the curve above. **The route is not a function of the
-observable state, so no state-conditional representation is equivalent to it.**
-`step` is the only feature that makes a tree equivalent, and a tree keyed on
-`step` is the flat array of section 4b with extra nodes.
-
-### The eleven guards are now separable — `dynamic/tape/pipeline.py`
-
-The route is one of twelve things the agent does. The other eleven are reactive
-guards applied in a fixed order (kawa source 990–1002), three of them stateful.
-`Pipeline` exposes them as named, individually switchable stages delegating to
-the original functions, so fidelity is by construction rather than by
-transcription:
-
-```python
-p = Pipeline()                       # verified 12,942/12,942 fields = 100.00%
-p.disable("r5_counter")              # drop one guard, measure the cost
-p.replace("preempt_shift", ours)     # swap in market_model logic
-```
-
-Measured on one game: the guards leave the farmer order untouched 100% of the
-time, hands 99.9%, market 96.8% — **96.7% of turns are the route verbatim.**
-Order is load-bearing (feed guard before room evacuation; terminal liquidation
-last), and each stateful guard keeps seat-keyed module state, so `_fresh_kawa()`
-gives every Pipeline its own module copy and `reset()` clears it between
-episodes.
-
-**This is the editable surface that is not the route.** `r5_counter` and
-`md_counter` are opponent-specific counters and have never been costed; that
-measurement is not done.
-
-## 37. Files handed over from the desktop — `incoming/` (2026-08-21)
-
-Uploaded, not yet graded. Nothing is imported by any agent.
-
-```
-incoming/8.21kaggriculture.py                    1,442 KB
-incoming/submission8.18.v3 (1).py                  153 KB   possibly 55600561
-incoming/kaggriculture-precomputed-schedule-policy.ipynb  1,772 KB
-incoming/kaggriculture-conomic-cut.md                4 KB
-incoming/终局卖出策略.md                            12 KB
-incoming/终局雇佣和移动规划.txt                       0 KB   <- transfer failed, re-send
-incoming/参考代码/                                        13 public notebooks
-```
-
-**Grade before promoting to `opponents/`.** Section 33 graded 117 agents already
-on disk and found exactly two in the band we win 20–80% of; an ungraded file
-silently changes the pool every result is measured against.
-
-`submission8.18.v3 (1).py` is worth checking first. If it is submission
-55600561, it scored **2630.9** on the ladder against 1828.3 for the shipped
-55614625 — the contradiction section 0 records and nobody has explained. The
-file makes a direct comparison possible for the first time.
-
-Two of the endgame notes overlap a measurement already on file: twelve terminal
-policies were swept by rollout and the entire searchable range was ±600, with
-`SHED_PANIC_FRACTION=0.70` costing −554. If the notes propose something outside
-that range, that is the experiment worth running.
+The final pre-upload V204 full suite is 358/358 passing. Keep
+formal arena JSON and causal logs. Keep tapes/opponent sources under `incoming/`
+as offline witnesses only. Put new derivations in `MODEL.md`, raw measurements
+in `logs/`, and update this handoff only with decisions and the next executable
+seam.

@@ -1,7 +1,134 @@
 # Kaggriculture — mathematical model
 
+> **V204 live-research note (2026-09-04).** The current uploaded bundle is
+> `submission/whitebox_v204.py` (Kaggle 56007683). It retains a certified land
+> wait until its public eligibility state, then reopens the full land
+> challenger, and bounds online quantity search by public endpoint-feasibility
+> regimes. Every emitted action still passes the full unified and routed
+> certificates. The online closure contains no identity, replay key, action
+> tape, fitted timing threshold, target date, coordinate or portfolio.
+> `HANDOFF.md` remains authoritative for live status and small-screen evidence.
+
+> **Production-status note (updated 2026-09-01).** This file retains fitted and
+> replay-era research sections for provenance; they are not production
+> dependencies. The selected strict-white-box model is
+> `whitebox/versions/v103_inserted_terminal_routes.py`; V102 is its immutable
+> gameplay comparison baseline, while V89/V86/V76 remain earlier immutable
+> baselines. Its runtime import closure uses
+> current public state, exact engine economics/geometry, analytic shop
+> uncertainty, bundle-level nonlinear clearing, constructive cash/route
+> certificates, and the state-derived terminal opportunity equations only. It
+> imports no fitted opponent predictor, replay, tape, learned weight, opening,
+> seed schedule, or target-agent fingerprint. `HANDOFF.md` is authoritative for
+> version evidence and promotion status. The inherited V76 core prices each route insertion by the
+> exact selected-set marginal `R(Q+q)-R(Q)`, shares one aggregate product book
+> between ordinary and capital tasks, and uses a structurally bounded
+> clock-independent route primal. Its wrapper pins inherited optional runtime
+> overrides to the qualified constants, so environment cannot select another
+> policy. V86 additionally removes the thresholded `earliest_sellable`/tracker
+> boost and the incomplete `opp_clear_round` terminal front-run, because one
+> current public farm observation is compatible with every hidden opponent
+> shed allocation of total size at most 100. Its valid standard108,
+> independent standard288 and real-engine external deltas are +$273.99,
+> +$303.90 and +$462.69/cell, with firing-cell W-L 68-14, 188-35 and 27-2.
+> All mirrors are exact and all real games finish `DONE/DONE`.
+> V89 adds only an exact solve-local route-cost memo and is action-identical to
+> V86. V102 corrects the remaining terminal physical asymmetry: the terminal
+> primal now chains several uniquely claimed targets before one exact final
+> return/DROP, matching the trip structure used by the ordinary-route upper
+> bound, and constrains all carried plus selected output by one shared final
+> shed capacity. Against immutable V89 it records +$795/cell on standard108,
+> +$759/cell on independent standard288, and +$863/cell on installed real36,
+> with paired W-L 90-14, 259-25 and 34-2 (four/four/zero inert ties). Every
+> row is positive, mirrors are exact, and all 180 real games are `DONE/DONE`.
+> V103 removes V102's append-only target placement: every exact-marginal target
+> is tested at every worker/route insertion index and the whole reordered chain
+> is rechecked for decay and final DROP feasibility. Against immutable V102 it
+> records +$60/cell on independent simulator288 (W-L 171-104, 13 inert) and
+> +$42/cell on installed real108 (W-L 66-33, nine inert), with every row
+> positive and all 540 enlarged real-gate games `DONE/DONE`. Enlarged real
+> self-play is -$2,596 and is explicitly retained as contrary evidence.
+>
+> Qualification caveat: the 2026-09-01 source/differential audit of the locally
+> installed Kaggriculture 1.32.6 engine proved that a shared market-order slot
+> clears per unit in lockstep: both players are quoted from the same pre-commit
+> inventory, then both commits mutate the book. The older whole-batch/seat-
+> average cancellation theorem used by V70/V95 is false (for example, at the
+> baseline STRAWBERRY book our 2-unit sale against 1 opponent unit has margin
+> 236, not standalone 238). The working tree now uses the exact recurrence and
+> an engine differential test. The V103 wrapper hash remains the historical
+> selected label, but its earlier large gates predate this shared-module
+> correction; no current-tree variant is newly promotion-qualified.
+>
+> The subsequent exact positioned certificate/route experiment is preserved as
+> unpromoted V77. It passed determinism and runtime checks but was neutral at
+> the 108-cell standard gate (+$8,888 mean, only 55-53 paired improvements,
+> with a negative multi-route row), so it did not reach the 288-cell or
+> real-engine promotion gates. V76 remains selected; see `HANDOFF.md` for
+> absolute margins.
+>
+> V78 then put the exact positioned multi-day certificate marginal inside
+> route insertion; V79 additionally projected the committed unit phase so
+> purchases could only support hour+1 routes. Both were quick-rejected against
+> V76 (V78 W-L 6-12; V79 W-L 7-11 with a nominally positive mean), and their
+> runtime traces reached 185-198 ms. They are tombstones, not production paths.
+>
+> V80 completed that line by matching purchase-day crop/animal calendars,
+> forcing observable acquisitions into the cached day plan, and including
+> current hire cost in every bridge-cash inequality. Its quick external gate
+> was decisively negative (-$23,935, t=-3.24, W-L 5-13; all rows negative), so
+> the certificate-route portfolio line is closed and V76 remains selected.
+>
+> V81 separately enabled finite, clock-free route relocation, exact bundle
+> prize exchange and refill on V76's objective. It was exactly deterministic
+> but reached 335 ms with 22/719 calls above the 180 ms soft target; its quick
+> hard-pool delta was -$7,534 (W-L 10-8), with negative self-play and two
+> negative rows. It is a tombstone and did not advance to 108/288/real gates.
+>
+> V82/V83 then removed fixed-seed town pacing and thresholded opponent
+> front-running from isolated sale paths. The exact guaranteed-drain extreme
+> starved bridge cash (-$190,538, W-L 0-18); exact day-boundary liquidation was
+> nearly inert but had only 13 firing cells and W-L 4-9 despite a nominal +$609
+> mean. Both are tombstones. A future market arm must jointly value retained
+> inventory and productive cash rather than selecting either endpoint.
+>
+> V84 added an exact same-phase cash certificate: a min-plus DP minimizes sale
+> revenue over one conserved 100-item opponent shed allocation, and certified
+> sales precede all dependent spending. Coupled to day-boundary sell-all it
+> regressed -$7,493/cell (W-L 9-9); V85 applied the same correction only to
+> V76's selected sales and regressed -$5,595/cell (W-L 7-11), while repeating
+> 182.7-183.3 ms soft-deadline misses. Both fired 18/18 external cells and are
+> tombstones. The certificate remains a proved feasibility primitive, but must
+> enter a joint multi-day cash/inventory-option objective before reuse.
+>
+> V87 then tested the smallest executable retained-inventory option without
+> reconnecting sale cash to capital. After V86's capital master it may postpone
+> an existing-stock sale one step only when current public town drain weakly
+> improves the whole bundle for every allocation of one conserved opponent
+> shed and strictly improves it for at least one allocation. Any current spend,
+> DROP, cash-floor deficit, rollover, or endgame crossing keeps the sale. The
+> exact 108-cell standard result was neutral and slightly negative in margin
+> (-$3.82/cell, SE $7.91), with only 14/108 firing cells and conditional W-L
+> 8-6. V87 is therefore an unpromoted tombstone; V86 remains selected. The
+> result closes one-step delay as a sufficient answer and leaves the full
+> joint multi-day cash/service/shed/order-slot objective unresolved.
+>
+> V88 solved its historical *own-cash* terminal slice after the state-derived
+> closed-route certificate wins. With no future productive action, capital and
+> service terms are identically zero; an integer DP jointly selects current sale
+> quantities, final retained quantities, standalone nonlinear two-phase
+> revenue, all certified output capacity, and ten market slots. The later
+> lockstep audit invalidated its original paired-robust interpretation. Its
+> standard108 result was neutral:
+> -$2.43/cell (SE $41.61), 82/108 firing, conditional W-L exactly 41-41, with
+> three negative opponent rows and self-play -$1,103. The maximum-shape solve
+> also adds a measured 21.3 ms mean. V88 is a tombstone and V86 remains
+> selected; this terminal-retention experiment does not resolve the productive
+> multi-day cash/inventory problem.
+
 Everything here is derived from the engine source
-(`kaggle_environments/envs/kaggriculture/kaggriculture.py`, v1.32.7), not from
+(`kaggle_environments/envs/kaggriculture/kaggriculture.py`; locally installed
+package 1.32.6 at the 2026-09-01 audit), not from
 the competition write-up. Where a quantity is verified against the engine the
 verification is stated; where a coefficient is fitted, the calibration data is
 given.
@@ -916,3 +1043,928 @@ That wall is the **83,274** the whole project is stuck behind.
    has produced champions that evaporated on revalidation.
 3. **A curriculum between agent4 and the tape.** Dropout cannot build it. A dial
    that weakens a rigid schedule *gracefully* is an open question.
+
+---
+
+## 21. Exact selected-set route-cost memo (V89)
+
+The strict white-box route master repeatedly evaluates a pure cost equation
+
+$$
+C(u,S,p,b)=d(u,a)+|\operatorname{carry}(S)|
+ +L(a,\operatorname{NN2Opt}(S,p))
+ +\sum_{t\in S}|\operatorname{ops}(t)|+B(S,b),
+$$
+
+where $u$ fixes worker start and budget, $S$ is the selected task multiset,
+$p$ is the committed live prefix, $a$ is the shed anchor when carry is needed,
+and $b$ selects the exact return-to-shed banking term. Lazy nonlinear market
+repricing changes task *value* signatures but not this physical route cost, so
+V86 recomputed identical values millions of times.
+
+V89 caches $C(u,S,p,b)$ only inside one selected-set solve. The key contains
+the worker, every task identity (sorted only to make the selected multiset
+canonical), and the prefix; $b$ is fixed for the solve. Identity never enters
+the primal order or tie-break. The memo is discarded on return and therefore
+contains no observation history, opponent state, learned value, or future
+schedule.
+
+On seed26800, V86 made 2,365,329 `route_cost` calls and spent 54.595 profiled
+seconds in them. V89 produces the same action SHA256 on all 719 calls while
+reducing mean/P95/P99/max latency from
+23.520/111.284/152.577/182.872 ms to
+17.638/81.009/110.329/126.764 ms (repeat max 127.571 ms). Quick18,
+standard108 and both-seat real36 external cells all have exact $0 paired delta
+and zero firing. This is a runtime promotion, not a gameplay-value claim; the
+multi-day productive inventory/cash/service objective remains open.
+
+### Productive inventory path tombstones (V90/V91/V92)
+
+V90 puts V89's complete current sale bundle versus retained bundle inside the
+positioned multi-day capital certificate, but credits only the first certified
+output while charging all remaining service. It regresses -$154,656.83 per
+paired cell with W-L 0-18. V91 credits the entire robust output stream and
+proves every cash prefix; it still regresses -$125,091.78 with W-L 0-18.
+Therefore the dominant error is not missing output revenue. It is replacing
+the already-coupled V89 selected-set objective with a second standalone
+full-season capital objective. Future work should preserve V89's score and use
+the multi-day proof only to exclude infeasible selected sets. V92 performs that
+test exactly and still loses -$36,580.33/cell with W-L 1-17. The hard
+full-season worst-case feasible set itself is therefore too restrictive for
+daily public-state replanning. Retain it as an audit oracle; a future arm must
+prove only obligations unavoidable before the next replan or repair actual
+current routed quantities without adding a second horizon value.
+
+V93 tests that post-route repair directly. V89 first routes with its unchanged
+nonlinear objective; only an uncertified actual capital quantity is trimmed,
+one least-score-loss column at a time. It still regresses -$37,996.67/cell
+(W-L 6-12), with roughly neutral multi-route but -$55,929/-$58,517 frontier/
+v111 rows. This closes full-season certificate enforcement as a production
+path; retain the equations only for audit or logically necessary pre-replan
+constraints.
+
+V94 tests one such necessary pre-replan constraint. For an asset with engine
+deadline $D_i$, it runs only when $\lfloor t/24\rfloor=\lfloor D_i/24\rfloor$
+and $t\le D_i$. The current unit phase is projected exactly because the market
+purchase occurs afterward. From hour $h+1$, a relaxed route must still complete
+the asset's initial PLANT+WATER or BUILD+PLACE operations by hour 24; competing
+ordinary work is deliberately omitted. Five equation tests cover rule-day
+classification, the spent hour-23 action, a feasible early route, a tile
+mutated by the current action, and deterministic memoized wiring. Quick18 is
+inert (0/18 firing), so V94 is a rule-audit tombstone and not a promotion.
+
+### Historical paired-phase selected-output experiment (V95; premise invalid)
+
+V95 attempted to correct V89's own-bank lower bound by averaging two
+*whole-batch* seat orders. That was not the engine transition: matching order
+slots clear one unit per player in lockstep, with both quotes taken from the
+same pre-commit book. The cancellation identity recorded in the original V95
+report is therefore false and must not be used as current mathematics.
+
+For item book $I$, our quantity $x$ and opponent quantity $y$, let one joint
+round quote both players at $P(I)$ and advance the book by the number of
+successful commits. Write $A_I(x,y)$ and $B_I(x,y)$ for the resulting exact
+revenues. The current zero-sum incremental value is instead
+
+$$
+G_I(x,y)=A_I(x,y)+R_I(y)-B_I(x,y),
+\qquad
+V_I(x;\bar y)=\min_{0\le y\le\bar y}G_I(x,y).
+$$
+
+`cashflow._lockstep_sale_result` implements this recurrence and a differential
+test checks it directly against `planner.simulate._process_market`. V95's
+historical standard108 result (-$274.74/cell, W-L 51-57) remains useful only as
+experiment provenance; it neither validates its old equation nor qualifies a
+current policy.
+
+### Dated paired-output objective and recertification (V96/V97)
+
+V96 replaces the one-phase relaxation with a rule-dated persistent book.
+Selected output is aggregated by physical availability day, guaranteed public-
+shop drain advances the book between phases, and one conserved stock of
+currently visible opponent standing yield may be allocated adversarially
+across phases. The same unit cannot be reused and stock is capped by the engine
+shed capacity. The exact DP telescopes selected-set marginals, but after pure
+price-equation memoization its seed29300 repeat maxima remain 315/318 ms with
+24-26 calls above 170 ms. It is a runtime tombstone with no arena gate.
+
+V97 retains V89's fast route objective and uses the dated equation only to
+recertify each complete hire/activation branch's actual selected quantity.
+This is deterministic and runtime-safe (repeat maxima 108.8/108.4 ms), but
+standard108 is -$2,638.82/cell (SE $1,068.63, t=-2.47), W-L 48-60, firing
+108/108, with five negative opponent rows. It is not promoted. This rejects
+the tested online uses, not the dated market equation itself.
+
+### Constructive first-output prefix (V98)
+
+V98 replaces the full-season capital path with the finite prefix ending at
+each purchased asset's first output. Crops use the minimum exact survival
+schedule PLANT+WATER, then WATER every second day; animals use BUILD+PLACE,
+FEED on the following and alternating days, and no CARE because it cannot
+change the first base unit. Each future route pays its closed travel, DROP and
+one PICKUP per distinct carried item. Pending private capital reserves tiles,
+same-item output clears once, and cash/hire/feed/shed/slot/activation equations
+remain exact.
+
+This is deterministic and runtime-safe after incremental sweep costing
+(144.8/151.8 ms repeat maxima), but it is not a valid productive objective.
+Quick18 loses $145,463/cell (SE $15,902, t=-9.15), W-L 0-18, and self-play is
+0-6. The missing term is now identifiable: the standalone future capital
+routes do not contain the public standing farm's intervening ordinary service
+work, and the finite horizon assigns no residual opportunity cost to standing
+capital after its first sale. A future bounded MPC must put existing and new
+service stops in one dated route/cash system and derive its horizon residual
+from state feasibility; item ceilings or a return to full-season charging do
+not repair this failure.
+
+V99 corrects a prerequisite V98 equation without changing the historical arm.
+One-time crops begin at one unit and gain one only on WATER actions inside the
+rule growth window. Earliest WATER-before-HARVEST output is therefore WHEAT=2,
+CARROT=2 and MELON=4. V99 still loses $98,403/cell (t=-7.28), W-L 0-18, with
+self-play 0-6. V98 used a different seed block, so the headline losses are not
+a causal comparison. Correct quantities are necessary and remain the
+only legal basis for future work; they are insufficient without shared future
+labour congestion and a finite-horizon residual.
+
+### Dated visible-farm prefix (V100)
+
+V100 tests the missing shared-labour term directly. For candidate horizon $H$
+and the public standing workload $B_H$, it proves the combined cash/route path
+and assigns capital the marginal
+
+$$V_{100}(C)=V_{\mathrm{exact\ prefix}}(C\cup B_H)-V(B_H).$$
+
+$B_H$ WATERs visible ongoing crops and FEEDs visible animals tomorrow and every
+second day, the exact minimum periodic survival cadence. Visible one-time crops
+take immediate zero-value abandonment; all assets take zero residual after
+$H$. Feed pickups, nonlinear WHEAT cost, closed routes, hires, slots and bridge
+cash are joint. Five equation/wiring tests pass and the full suite is 191/191.
+
+The mechanism fails decisively: quick18 is -$112,877/cell (SE $11,852,
+t=-9.52), W-L 0-18, with self-play 0-6. It also has one repeatable 234 ms call,
+above the 180 ms soft deadline. At the initial day-0 purchase the visible farm
+is empty, hence $B_H=\varnothing$ and the oversized V99 standalone portfolio is
+still purchased irreversibly. Later standing-farm congestion cannot repair the
+first decision. Future work needs a rule-derived opportunity cost or bounded
+residual on proposed capital itself, shorter than V90's rejected full-season
+obligation; changing the visible-service cadence cannot fix this structural
+null at purchase time.
+
+### Optional minimum-service continuation (V101)
+
+V101 replaces the single terminal point with two fully certified endpoints:
+
+$$V(C)=\max\{V_{\text{exact first then abandon}}(C),
+              V_{\text{all base outputs, minimum service}}(C)\}.$$
+
+The continuation endpoint WATERs/FEEDs every second day, omits CARE and
+fertilizer, and aggregates each dated base output on the persistent exact book.
+It is optional, so it does not repeat V90/V91's forced negative tail. This
+changes the initial bundle from 24 MELON to 5 COW + 16 CARROT + 2 MELON + 1
+TOMATO and stays below 154 ms, proving the horizon asymmetry was active.
+
+Gameplay remains catastrophic: quick18 is -$93,637/cell (SE $5,995,
+t=-15.62), firing 18/18 and W-L 0-18; self-play is 0-6. Thus correcting the
+recurring-asset endpoint changes which 24 slots are filled, not the standalone
+capital/online-replan mismatch. V98-V101 close further scalar or endpoint
+tuning of this invented-capital objective. The next model seam should be
+terminal route/liquidation feasibility and opponent-relative interval value.
+
+### Capacity-certified chained terminal routes (V102)
+
+For worker $u$ and selected terminal stops $p_1,\ldots,p_k$, V102 replaces the
+historical per-target return charge with the exact executable chain
+
+$$L_u=d(s_u,p_1)+o(p_1)+\sum_{i=2}^k[d(p_{i-1},p_i)+o(p_i)]
+      +d(p_k,\text{shed})+1.$$
+
+Current carried stock is the initial chain load. Targets remain unique, crop
+decay is checked at the exact HARVEST offset, complete HARVEST/fertilizer output
+is cleared once as an aggregate nonlinear bundle, and carried plus selected
+output is at most the public 100-item shed capacity. The policy still switches
+only when this closed primal strictly exceeds the optimistic live-route value;
+ties preserve ordinary work and direct delivery rescue remains active.
+
+The correction is qualified against immutable V89: standard108 +$795/cell
+(90-14), independent standard288 +$759/cell (259-25), and installed real36
++$863/cell (34-2), with every row positive, exact mirrors and all real games
+`DONE/DONE`. It is selected without any fitted coefficient, fixed endgame
+number, hidden opponent state or remembered route commitment.
+
+### Exact all-position terminal insertion (V103)
+
+V102 selected targets by exact bundle marginal but appended each one to a
+worker endpoint. V103 evaluates every insertion index $j$ and accepts only a
+fully closed chain whose recomputed HARVEST offsets preserve every crop:
+
+$$j^*=\arg\min_j L_u(r_u\oplus_j p)$$
+
+inside the existing exact-gain tie class. It introduces no distance/value
+ratio: economic priority remains the aggregate paired-sale increment. Complete
+length and incremental length break only equal economic gains. Shared capacity,
+unique claims, one final DROP and strict opportunity dominance are inherited.
+
+The independent simulator288 result is +$60/cell (171-104, 13 inert); the
+enlarged installed real108 result is +$42/cell (66-33, nine inert), with every
+opponent row positive and all 540 games `DONE/DONE`. Direct real self-play is
+negative/neutral at -$2,596 and is recorded rather than hidden. V103 is the
+selected wrapper; V102 remains immutable.
+
+### Certified one-exchange terminal neighborhood (V104 experiment)
+
+Let `S` be V103's selected target set. V104 evaluates each finite seed
+
+$$S_{q\to p}=(S\setminus\{q\})\cup\{p\},\qquad q\in S,\ p\notin S,$$
+
+placing `p` by exact all-position feasibility and then refilling every remaining
+target by V103's aggregate nonlinear marginal. It accepts only a final set
+whose exact paired bundle value strictly exceeds `V(S)`. All complete routes,
+HARVEST decay offsets, output capacity and final DROPs are recertified. Route
+length is only an equal-value insertion tie-break; no economic coefficient or
+runtime-dependent branch is introduced. Equation tests and runtime/import
+audits pass. Standard108 is +$36/cell (SE $27), firing 53/108 with conditional
+W-L 36-17, but v111 and strong-barnyard row means are negative. The evidence is
+not robust enough for 288/real evaluation or selection. V104 is retained as a
+positive/neutral tombstone; V103 remains selected.
+
+### Complete shared-slot capital columns (V105 experiment)
+
+For proposal quantities `n[a]`, V105 forms the public feasible frontier
+
+$$P=\text{nearest}_{\sum_a n[a]}(\text{live feasible empty tiles})$$
+
+and creates one route column `(a,p)` for every proposed asset `a` and every
+`p` in `P`. Constraints enforce `sum_p x[a,p] <= n[a]` and
+`sum_a x[a,p] <= 1`. Thus a rejected animal no longer reserves a tile that an
+executable crop could use. Value, proposal quantities, cash, hires, slots and
+fixed activation are unchanged. This is an unselected current-replan
+experiment pending runtime and paired evidence against V103.
+The formulation is deterministic and runtime-safe, but quick18 is
+-$7,056/cell (t=-2.05), W-L 5-13, with all three opponent rows negative.
+V105 is rejected without a larger gate. Completing feasible capital choices
+cannot be promoted while their productive-horizon opponent-relative value is
+still inconsistent with the later daily replans.
+
+### Unified finite Stackelberg capital value (V116--V120 experiments)
+
+Let `A(s)` be the finite set of complete crew/capital rows whose current cash,
+ten market slots, land activation, positioned routes and daily labour are
+constructively feasible. For `a in A(s)`, let `E(a)` contain exact first-output
+abandonment and the named continuation endpoint, and let `B(a,e)` contain only
+post-output reinvestments whose seed/land bill, market keys, closed route and
+every cash prefix are feasible. The follower set `R(s)` is generated from
+public state: no response plus one certified quantity for each legal asset
+direction. Every follower quantity pays its own asset, feed and Fibonacci hire
+cost; opponent private inventory is never assumed.
+
+For dated own output `x`, standing opponent output `y` and response output `z`,
+the actual persistent book uses the engine lockstep revenues `A_I(x,y+z)` and
+`B_I(x,y+z)`. A counterfactual persistent book sells only `y`. With certified
+costs `C` the response-specific marginal is
+
+$$
+G(a,e,b;r)=\sum_t\left[A_{I_t}(x_t,y_t+z_t)
+-B_{I_t}(x_t,y_t+z_t)+R_{J_t}(y_t)\right]
+-C_{self}(a,e,b)+C_{opp}(r).
+$$
+
+Guaranteed public town drain advances both books between dates. The normalized
+robust capital value is
+
+$$
+V(a)=\max_{e\in E(a),b\in B(a,e)}\min_{r\in R(s)}G(a,e,b;r)
+-\min_{r\in R(s)}G(0;r).
+$$
+
+The second term removes opponent profit that exists independently of our
+capital action; omitting it makes no-capital artificially equal zero and
+rejects every purchase by construction. This is max-min over a named finite
+set, not a response probability and not a fitted lambda.
+
+V116 implements the equation but regresses -$28,730/cell (W-L 7-11) against
+V107's hard pool. V117's prospective land option is time-inconsistent; V118's
+paid-activation option is initially unreachable because the old proposal
+chooses the no-land universe. V119 recertifies both physical arms and restores
+land purchase, but regresses -$26,282/cell (W-L 5-13) while over-expanding
+animals. V120 charges the full standing/new execution workload and symmetric
+standing output cash; it then collapses because an all-season service endpoint
+is too restrictive for daily replanning. None is promoted. The equation and
+resource certificates remain reusable; the next solver must apply the same
+continuation/abandonment choice recursively at later public states.
+
+### Execution-aligned crew and land coverage (V121--V127 experiments)
+
+For a legal current HIRE prefix `k`, let `a_k` be the rule-derived capital
+proposal. The earlier master routed positioned capital columns directly, but
+the emitted agent observed fungible inventory one turn later and rebuilt a
+different scan-order task set. The truthful current-day capacity is therefore
+
+$$
+\hat s_k=\operatorname{ProjectOwnMarket}(s,a_k,k),\qquad
+E_k=\operatorname{EnumerateLiveTasks}(\hat s_k),\qquad
+X_k=\operatorname{BundleRoute}(E_k,U_k,h+1).
+$$
+
+`ProjectOwnMarket` applies only deterministic own HIRE, seed, animal, product
+and land effects. It predicts no opponent action. V123 caps each purchased item
+quantity by the count present in `X_k`; the crew row then pays the exact private
+Fibonacci bill and may win only through additional executable task value. On
+the empty opening state this exposes the real frontier: three new hands execute
+22 placements, while four execute all 24. No coverage ratio appears in value.
+
+V121 tests the other exact seam: retain the winning row's explicit `(item,
+tile)` pairs through the next observation and permute fungible live tasks onto
+those positions. The same three hands then execute 24/24. V126 instead keeps
+every incumbent manifest and assigns only its explicit `undone` set to an
+hour-one recourse hand; it also reaches 24/24 without losing already-carried
+animals. These are exact execution mechanisms, not policies inferred from a
+replay.
+
+The game result rejects a *coverage-only reward* and the concrete V121 coupled
+layout/composition policy; it does **not** reject high coverage itself. V121's
+quick hard-pool delta against V107 is `-$16,009/cell` with W-L 6-12. In one
+multi-route cell it raises our bank by `$22,234` but raises the opponent by
+`$62,737`. That experiment changed occupied positions, crop/animal composition,
+service, later purchases and sale timing together, so attributing the result to
+coverage or to MILK/WOOL alone was invalid. Empty-farm-only position retention
+shows that the opening state matters, but still does not isolate which product
+books caused the trajectory. `occupied tiles` and `completed placements`
+therefore remain feasibility/audit quantities rather than standalone rewards;
+their value must be decided jointly with composition and opponent-relative
+margin.
+
+V125 also provides a finite postselection diagnostic. Holding the winning crew
+and earlier asset rays fixed, it enumerates every integer quantity on the last
+asset direction and applies the unified finite Stackelberg certificate. In the
+opening example the robust WHEAT ray peaks at 12 rather than 13, proving that a
+positive own-cash tail unit can have negative shared-market margin. This local
+repair does not fix the later recursive land/service problem and is not
+selected.
+
+### Fixed-coverage product-separated exchange (V128--V132 experiments)
+
+Let the crew winner supply positioned counts $n_i$ and positions $P_i$. A
+composition neighbour moves $q$ named positions from asset $i$ to legal asset
+$j$, subject to
+
+$$
+\sum_i n'_i=\sum_i n_i,\qquad
+\bigcup_iP'_i=\bigcup_iP_i,
+$$
+
+while crew, fixed market orders and the paid land activation remain unchanged.
+There is no coverage term in the objective. Each neighbour is recertified for
+seed/animal cost, standing-plus-new positioned labour, feed, capacity, dated
+cash and the finite paid opponent response set. Product books are separate:
+WHEAT output changes only WHEAT inventory, MELON only MELON, COW output only
+MILK, SHEEP only WOOL and GOOSE only EGG. An opponent MILK stream therefore
+does not directly penalize our MELON stream. The economically relevant link is
+the opportunity cost of not contesting MILK when doing so would reduce the
+opponent's MILK revenue.
+
+V128 accepted the steepest robust one-unit direction and then enumerated its
+integer ray. It changed the opening 24-position mix from `3 COW + 1 SHEEP + 7
+MELON + 13 WHEAT` to `3 COW + 1 SHEEP + 14 MELON + 6 WHEAT`; the hard-pool
+delta fell to `-$35,436/cell` (2-16). The finite endpoint had not preserved the
+early WHEAT cash opportunity. V129 therefore requires the candidate's exact
+cash to be no lower at every dated prefix. It instead chooses `1 SHEEP + 10
+MELON + 13 WHEAT`, buys NE early in the inspected trajectory, and recovers the
+quick delta to `-$3,550/cell` (9-9).
+
+The response audit then exposed another finite-set defect. First-output-only
+responses represented `BUY_COW_1` by one MILK unit. V130 lets every public
+pure direction choose its paid first-output or minimum-service full endpoint;
+at the opening this yields named responses such as `BUY_COW_4_FULL` with 44
+MILK units, `BUY_SHEEP_5_FULL` with 40 WOOL and `BUY_GOOSE_8_FULL` with 200
+EGG. V131 also constructs paid two-asset responses, but 59 response scenarios
+raise the opening action to about 1.55 seconds and do not change the action, so
+that arm is an online tombstone.
+
+V132 handles incompleteness without a probability or lambda. In addition to
+cash-prefix dominance it requires scenario-wise opponent-margin dominance:
+
+$$
+C_t(a')\ge C_t(a)\quad\forall t,
+\qquad
+M(a',r)\ge M(a,r)\quad\forall r\in R_{\mathrm{paid}}(s).
+$$
+
+Only then may the robust value improve the fixed-coverage mix. Its opening mix
+is `1 COW + 1 SHEEP + 9 MELON + 13 WHEAT`, still 24/24 positions with the same
+three hires. On 102 hard-pool paired cells it is `+$3,194/cell`, W-L 55-47,
+SE `$4,217`, t=0.76. A six-cell real-engine check is also positive at
+`+$1,958/cell`, W-L 3-3. These are directionally better and recover V121's
+regression, but are statistically neutral and do not justify promotion.
+
+### Tape-guided falsification, never tape-conditioned action (V133--V137)
+
+The offline top-replay audit is allowed to ask whether the public model has
+omitted an economic action. It is not allowed to answer an online action. In
+56 current top replay seats, the day-one medians are 5 opening hires, 2 COW,
+2 SHEEP, 12 MELON and 7 WHEAT; the exact `2/2/12/7` asset vector occurs in 39
+seats. These counts do not appear in the production import graph, candidate
+generator, objective, tie-break or state. They are a falsification panel for
+the following rule-only claims:
+
+1. coverage is a decision, not a reward or equality constraint;
+2. harvested one-time crops release a named tile as well as cash;
+3. cash reserved for WHEAT may be spent on WHEAT but not on new capital;
+4. full animal value must pay FEED, CARE, route work and daily Fibonacci crew;
+5. fertilizer can bridge dated cash without receiving speculative residual
+   utility; and
+6. crew must be compared after, rather than before, robust composition.
+
+The variable-coverage neighbour set adds an explicit `asset -> IDLE` move to
+every legal `asset -> asset` exchange. A candidate is accepted only when the
+same finite paid-response certificate strictly improves. The multi-ray solve
+stops after at most the number of public engine asset kinds. Its trace records
+source, target, quantity, coverage and before/after robust values; the runtime
+tape feature vector is the empty tuple.
+
+For a certified one-time crop output at day $t$, the rotation set releases
+only positions whose named output appears by $t$. Every continuation pays seed
+at each purchase date, recomputes closed routes and wages on each service date,
+respects ten market slots and uses realised sale cash only after dated output.
+The opt-in land branch also pays the public next-quadrant price and one land
+plus one seed order. Per crop direction it retains the exact feasible quantity
+with greatest rule revenue minus cost; no replay quantity is a candidate.
+
+The own full-service endpoint separates fertilizer's two roles. With
+`service_fertilizer_credit=True`, exact collection work and shared-book sale
+cash enter feasibility. With `service_fertilizer_value=False`, FERTILIZER is
+removed from the leader payoff before finite opponent-response margin. It may
+prevent insolvency but cannot make an animal look profitable through assumed
+fertilizer rent.
+
+V133--V137 falsify several superficially attractive relaxations. Removing
+fixed coverage and cash-prefix dominance alone selected 24 MELON and lost
+about `$70,292/cell` versus V107 on the 18-cell quick hard screen. Full
+fertilizer service then selected GOOSE and also regressed. Letting the named
+feed reserve fund feed was neutral versus V132 on that quick pool
+(`-$482/cell`, W-L 8-10) and sharply lowered a no-opponent bank because the
+execution layer did not turn earlier input purchase into more service.
+Finally, the crew-frontier solve endogenously selected five opening hires, but
+its no-opponent bank was only `$25,721`; choosing the familiar crew scale did
+not repair incomplete multi-stage continuation value.
+
+None of V133--V137 is promoted. V132 remains the best research arm, V107 the
+comparison reference and V103 the historical selected label. The next
+admissible step is a finite multi-stage cash/land/service continuation whose
+emitted intraday routes implement the same bridge; a replay portfolio, crew
+target, day schedule or fitted imitation term remains inadmissible.
+
+### Herd trajectory and standing-book marginal value (V138--V145)
+
+The day-one tape vector is not a terminal portfolio. Scanning the same 56
+named top seats through all 30 public day-boundary states gives peak COW
+quartiles `6 / 7 / 9` and peak SHEEP quartiles `5 / 6 / 9`. The common peak
+pairs are `7 COW + 6 SHEEP` (13 seats), `9 + 5` (12), `8 + 9` (5), `6 + 10`
+(4) and `6 + 11` (3). SHEEP reaches at least eight in 21/56 seats and COW
+reaches at least eight in 22/56. `4 COW + 8 SHEEP` exists, but is one realised
+peak rather than a universal target. These offline counts falsify a static
+opening interpretation; none is passed to an online action function.
+
+The missing online term was our standing output. The historical incremental
+response equation placed candidate output and opponent output into the shared
+book but omitted the public full-service schedule of our already-standing
+assets. Consequently a ninth COW could be priced like a first COW. The opt-in
+standing-book equation evaluates
+
+$$
+\min_{r\in R_{\mathrm{paid}}(s)}
+\left[
+R_{\mathrm{us}}(Y_{\mathrm{standing}}+Y_a,r)
+-R_{\mathrm{opp}}(Y_{\mathrm{standing}}+Y_a,r)
+-C(a)+C(r)
+\right],
+$$
+
+on one dated nonlinear market path. Its no-action value is computed by the
+same equation and subtracted only as a candidate-independent reference. Thus
+existing MILK reduces the marginal value of another COW without reducing the
+value of an independent WOOL unit. A unit test proves this product separation.
+
+V138--V145 isolate the consequences rather than installing a replay mix.
+Removing the cash-prefix order globally made certified animals escape because
+the execution layer protected the named feed reserve from the WHEAT purchase
+it was meant to fund. Allowing only WHEAT to consume that reserve made the herd
+survive, but maximum-coverage proposals reached 24 SHEEP. Adding an explicit
+animal-to-IDLE option reduced the inspected endpoint to `9 COW + 5 SHEEP + 1
+GOOSE`, yet its quick hard-pool delta was `-$19,209/cell` versus V132.
+
+The cleanest isolation retains V132's first-pass crop and livestock scale and
+then rebalances only selected animals. Same-infrastructure exchange is derived
+from the engine table: COW and SHEEP share PASTURE, while GOOSE requires COOP.
+Scenario-wise dominance made this second pass inert. Pure robust max-min V145
+instead selected `12 COW + 1 SHEEP` in the inspected passive trace and raised
+that trace by `$4,394`; however the 102-cell hard pool reversed the quick sign
+to `-$3,881/cell`, SE `$3,818`, t=-1.02 and W-L 51-51. All three opponent
+subtotals were negative and absolute game wins fell from V132's 1.0% to 0.5%.
+It is therefore rejected.
+
+The evidence supports a dynamic herd, not any fixed `4/8`, `8/4`, `7/6` or
+`12/1` vector. A correct next solver must choose herd scale, PASTURE mix, crew,
+land and service timing in one multi-stage executable certificate, and must
+recompute each finite opponent response quantity against the candidate rather
+than selecting that quantity from a standalone opponent problem. V132 remains
+the best research arm; no V138--V145 result is promoted.
+
+### Candidate-complete responses and incremental land planning (V146--V152)
+
+V146 closes the response-quantity semantic gap for named candidate products.
+The default finite response reducer retains the standalone-profit maximizer in
+each asset direction.  When a leader candidate touches product set $P_a$, the
+opt-in response set instead retains every cash/labour-feasible quantity whose
+asset sells into $P_a$:
+
+$$
+R(s,a)=\{r_{j,q}:q\in Q_j(s),\;p(j)\in P_a\}
+\cup\{r_j^*:p(j)\notin P_a\}.
+$$
+
+All quantities pay capital, feed and Fibonacci labour before their dated
+output enters the shared book.  This is still finite and contains no response
+probability.  Applying it only to a second-pass COW/SHEEP rebalance selected
+`10 COW + 0 SHEEP` and reduced the inspected passive bank to `$101,444`, so
+the equation repair is retained but V146 is not.
+
+The land audit found a separate action-set deletion.  V132 can buy the first
+extra quadrant, but its fixed-coverage composition pass cannot create another
+`BUY_LAND`; V119 exposed later land to the robust layer only together with a
+durable all-animal ray and subsequently over-expanded.  V147 and V148 falsify
+two broad fixes.  A crop-only land arm at every stage replaces the valid
+opening portfolio and falls to `$100,883`; a standing-book robust ranking of
+all post-second-quadrant rows leaves land unselected, cuts the herd to
+`1 COW + 3 SHEEP`, costs about a minute per passive episode and ends at
+`$67,673`.
+
+V149 therefore makes land a strict challenger rather than a replacement
+objective.  The complete sequence is:
+
+1. solve V132, including crew, positioned capital and scenario-dominant
+   composition;
+2. once two quadrants are public, enumerate each still-legal crop and every
+   affordable integer prefix on the next locked quadrant;
+3. price incumbent and challenger on the same standing-output book with every
+   paid response quantity on the challenged crop book;
+4. reserve exact market-order slots for incumbent asset keys, `BUY_LAND`, the
+   crop key and the largest compatible Fibonacci crew;
+5. route incumbent work as explicit opportunity-cost columns, pack a feasible
+   new-land prefix, then recertify only the actually retained positions;
+6. accept only when
+
+$$
+V_{\rm robust}(a_{\rm land})+V_{\rm tasks}(T_{\rm kept})-C_{\rm hire}'
+>
+V_{\rm robust}(a_0)+V_{\rm tasks}(T_0)-C_{\rm hire}.
+$$
+
+This fixes two concrete planner defects.  A one-unit greedy route cannot cross
+the fixed `BUY_LAND` cost even when the complete bundle is positive, and
+requiring all tasks to survive a crew reduction erases the explicit value of
+the work being displaced.  Mandatory incumbent capital plus priced ordinary
+task loss gives a constructive certificate without rewarding coverage.
+
+On the inspected passive state V149 naturally buys the third quadrant on day
+11, hires seven rather than nine because the ten-slot market queue must also
+carry land and seed orders, and completes four new STRAWBERRY positions.  The
+audited task loss is `$587`; robust total value still rises from `$21,494` to
+`$21,968`.  The final bank rises from V132's `$112,625` to `$128,349`, with a
+rule-derived `9 COW + 6 SHEEP + 1 GOOSE` endpoint.  These counts are outputs,
+not targets.
+
+The required pool gate is positive but not separated.  Over 102 hard-pool
+paired cells V149 fires 67 times and records `+$1,496/cell`, SE `$1,400`,
+t=`1.07`, W-L `35-32`; candidate and V132 absolute game win rates are both
+2.0%.  Per-opponent deltas are `+$4,471` against multi-route, `-$744` against
+frontier and `+$760` against v111.  V149 is therefore a valid directional land
+research arm, not a promoted policy.
+
+The worst frontier cell exposes recursive time inconsistency: land bought for
+crops later becomes unpriced animal capacity, reaching `24 COW + 1 SHEEP`.
+V150's PASTURE-only repair is inert, V151's unrestricted current-capital repair
+raises the same state to 27 COW, and V152's public crop-land covenant repairs
+that cell but regresses in the 18-cell quick screen (`-$393/cell`, firing W-L
+2-8).  All are rejected.  The remaining solver must value the actual next-day
+replanning policy, including cross-product opponent adaptation, inside the
+land action rather than impose a permanent land class after purchase.
+
+### Candidate-bound staged labour (V153--V158)
+
+Opponent behaviour shows that high seasonal hiring and full quadrants can be
+profitable, but a generic extra-hire action is not economically identified.
+V153 proves the failure: reopening hiring for arbitrary queued tasks expands
+the farm to 101 COW and collapses cash.  V155's narrower generic hour-1 tail
+still loses `$25,017/cell` in the hard screen.  The exact V156/V157 split
+attributes that loss to the tail hire rather than to current-land crop
+enumeration.
+
+The retained physical extension is a two-phase daily labour certificate.  For
+closed routes $r_i$ with action costs $c_i$, a feed order leaves nine HIRE
+slots at hour 0 and the fresh hour-1 book provides ten more:
+
+$$
+H_0\le 9,\quad H_1\le 10,\quad
+\operatorname{match}\bigl(\{c_i\},
+\{23\}^{1+H_0}\cup\{22\}^{H_1}\bigr)\text{ is feasible}.
+$$
+
+V158 binds $H_1$ to one named crop challenger.  For every deferred quantity
+$h$, it deducts the live Fibonacci wage, adds exactly $h$ hour-1 units with 22
+actions, preserves incumbent work/capital, routes the candidate, recertifies
+its dated cash/labour/output path, and accepts only if
+
+$$
+\min_{r\in R(s,a)} M(s,a,r)-C_{\rm hire}(h)
++V(T_{\rm kept})
+>
+\min_{r\in R(s,a_0)}M(s,a_0,r)+V(T_0).
+$$
+
+The count is a one-use own-action certificate checked again against the live
+hour-1 order book, hand cap, cash and service reserve.  Thus the mechanism is
+fully inspectable and cannot hire for an unrelated task.
+
+The economic gate is mixed and insufficient: passive cash rises only `$26`;
+the 18-cell hard pool is `+$623/cell` but firing W-L-T is 7-9-2, with
+multi-route `-$2,767`, frontier `+$3,683`, v111 `+$953`, and unchanged 2.8%
+absolute game wins.  V158 is not promoted.  The next equation must put delayed
+wage, crop output, persistent market saturation and the opponent's paid
+action-dependent continuation on one dynamically consistent book; another
+coverage target or copied herd vector is inadmissible.
+
+### Closed one-day capital option and execution consistency (V159--V163)
+
+For an empty tile and cash retained at day $d$, define the finite next-day
+capital set directly from engine legality:
+
+$$
+D(s)=\{(x,q):x\in\text{crops}\cup\text{animals},\ 1\le q\le
+\min(E(s),\lfloor C_{d+1}/c_x\rfloor),\ d+1\le\delta_x\}.
+$$
+
+Each $z=(x,q)$ buys on $d+1$, starts a closed positioned route on $d+2$ and
+pays
+
+$$
+C_D(z)=q c_x+\sum_t\Delta C_{\rm Fib}(H_t)
++\sum_t\Delta C_{\rm feed}(W_t),
+$$
+
+subject to dated cash floors, shed capacity, ten market orders and exact route
+packing.  Its output schedule is valued on the same standing-output market
+book and against the same finite paid follower responses as the current crop.
+Animals have two named endpoints: abandon after first base output, or pay the
+minimum remaining service bill through every reachable base output.  The
+certificate exposes the chosen endpoint, reinvestment, cost and worst response.
+
+Two closure conditions are essential.  First, a zero-sized current capital set
+must not return value zero before $D(s)$ is enumerated.  The corrected wait arm
+is
+
+$$
+V_{\rm wait}(s)=\max_{z\in D(s)\cup\{\varnothing\}}
+\min_{r\in R(s,z)}M(s,z,r),
+$$
+
+not an empty-set shortcut.  Second, the free future crop rotation used by old
+endpoints cannot coexist with this paid alternative; otherwise it dominates
+without committing cash or an order.  V159/V161 proved both failure modes by
+being exactly inert.  Closing them in V162 repaired the diagnosed seed by
+`+$5,828` over V161.
+
+Feasibility still did not imply execution.  The value book credited public
+standing MILK/WOOL while the route certificate reserved only minimum survival.
+V163 therefore defines a common rule-derived MPC horizon
+
+$$
+H_D(s)=\max_{x\text{ legal at }d+1}\{\text{first sale day of }x
+\text{ started at }d+2\}
+$$
+
+and packs standing FEED, CARE, HARVEST, input pickups, wages and sale cash with
+every current/deferred arm through $H_D$.  Only first-output candidate endpoints
+are allowed in this bounded solve; it does not reintroduce the rejected
+all-season service commitment.
+
+This equation is transparent but the online policy remains dynamically
+inconsistent.  A route at day $d$ proves that future hires and tasks exist; the
+day-$d+1$ planner then discards that witness and builds a new manifest.  In the
+passive trace V163 differs from V149 only on days 25--27, adding 11 WHEAT seeds
+and two net hires while losing standing animal/fertilizer output.  Against
+multi-route, nearly unchanged opponent unit sales nevertheless gain `$12,050`
+of MILK revenue because our altered service/sale path reduces price pressure.
+
+The formal 102-cell gate is a separated regression: `-$2,044/cell`, SE `$719`,
+t=`-2.84`, firing W-L-T `24-59-19`, with all three opponent rows negative and
+unchanged 1.0% absolute wins.  Therefore none of V159--V163 is selected.  The
+retained architectural requirement is stronger than another scalar value
+term: a multi-stage action may receive continuation value only if the winning
+hire/task witness becomes the next day's executable manifest, or if every
+standing output that witness cannot guarantee is charged as an explicit robust
+displacement.  Dates, identities, replay schedules, target compositions and
+fitted penalties remain outside the admissible model.
+
+### Staged recourse, land throughput and execution falsifications (V164--V184)
+
+V164--V173 tested increasingly closed versions of staged reinvestment. The
+best small result was V169's output-funded follower option: `+$22,817/cell`,
+firing W-L `6-3`, but zero absolute wins on nine fresh cells. V174 then made
+the follower response span both crops and herd and lost `$16,513/cell` with
+W-L `0-3`. These experiments do not justify a new coefficient. They show that
+a one-step continuation value is not an executable multi-day policy when the
+next replan may displace the standing service book.
+
+Action traces expose the resulting physical gap. In one causal block V149
+issued about 98--107 PLANT, roughly 500 WATER and more than 200 DROP actions,
+whereas strong pool agents issued about 184--199 PLANT, 909--1010 WATER and
+9--70 DROP. The observation is an offline falsification witness, not a target
+composition or an online feature. Three transparent seams were isolated.
+
+First, legacy assets observed on public day zero were dated as if newly bought.
+V177 made their date exact throughout the event calendar, but a fresh nine-cell
+screen lost `$9,951/cell` with W-L `3-6`. Exact public dating remains a valid
+primitive, yet switching every downstream decision at once is not a validated
+policy.
+
+Second, the old weed task value was zero whenever no seed was already held.
+That deletes DIG from the task set before the capital planner can buy the seed
+which would make the cleared tile useful. V179 therefore exposed the finite
+paid exercise value
+
+$$
+ V_{\mathrm{weed}}(q)=
+ \max_{c\in C,\,1\leq q\leq Q}
+ \frac{R_c(qy_c)-qk_c}{q},
+$$
+
+subject to live cash after standing service, the exact seed bill, harvest and
+sale deadlines, and nonlinear same-book revenue. It increased DIG/PLANT in a
+causal trace but produced only `+$411/cell`, W-L `1-2`, and no absolute win.
+The action-set circularity is closed; the larger throughput problem is not.
+
+Third, a route need not physically return solely to store output when refresh
+will bank it for free. The exact capacity certificate used by V183 was
+
+$$
+ S_{\mathrm{shed}}+S_{\mathrm{hands}}+Y_{\mathrm{today}}
+ \leq K_{\mathrm{shed}}=100.
+$$
+
+On safe days its executor passed after useful work and allowed refresh to bank
+the load. A diagnosed three-cell block improved by `$60,110/cell` and gained
+one absolute pair win, but the fresh nine-cell block lost `$62,329/cell` with
+W-L `0-9`. Avoiding the return changed the next hire/replan decision and
+delayed shared-market sales; it is not a free scalar saving.
+
+The remaining composition and staffing variants were also falsified. Full or
+repeated animal-to-paid-crop rotation lost `$63,028` to `$138,702/cell`;
+weed-bound incremental hiring with preserved old routes lost `$3,967/cell`;
+and combining overnight banking with the weed option lost `$60,350/cell`.
+These are useful negative constraints on the solver, not tunable penalties.
+
+The next admissible certificate must jointly choose, per route, physical bank
+versus capacity-safe overnight bank, and attach the whole
+DIG $\rightarrow$ seed purchase $\rightarrow$ next-step PLANT chain and any
+incremental hire to the same dated manifest. It must reprice our outputs and
+each finite, paid opponent response on one market book, preserve incumbent
+service unless its displacement is explicitly charged, and expose every term
+in the decision trace. Replay identity, hidden weights, fitted penalties and
+hard-coded leading portfolios remain forbidden.
+
+### V202 paid-turnover falsification and stable rollback
+
+The V199 trace suggested the circular deletion
+`no seed -> weed value 0 -> no DIG -> no empty tile -> no seed purchase`.
+V202 made the capability composable with production fertilization and retained
+the physical current-turn chain
+
+$$
+\mathrm{DIG}_x\to\mathrm{BUY\_SEED}_{c,q}\to
+\mathrm{PLANT}_{x,c}\to\mathrm{WATER}_x.
+$$
+
+The seed completion is conditional on the exact named position, current cash
+after service reserve and the ten-order limit. Empty tiles wait for the market
+phase instead of deleting the manifest. Output value uses only the earliest
+unfertilized engine yield, and an additive task can be appended only after the
+ordinary route in the same order and only when no incumbent output-banking
+tail is delayed.
+
+This closes the same-day implementation bugs but not the economic column. The
+missing term is the value of future executable service:
+
+$$
+V_{\rm turn}(s,a)=R_c(y)-C_{\rm seed}-C_{\rm current\ route}
+-\sum_{d'>d}\left(C_{\rm route}(d')+
+L_{\rm standing}(d')\right),
+$$
+
+where every future route and standing-task displacement must be retained, not
+assumed. Current CLEAR hiring lost `$10,785/cell` on the three-opponent
+causal screen. A public durable-capital closure plus shorter crop calendar
+still lost `$2,456/cell` on six paired hard cells; preserving incumbent route
+order and banking still lost `$2,494/cell`, W-L `0-3` conditional on
+firing. The production decision is therefore IDLE for this action: the
+turnover capability remains auditable but disabled.
+
+The submitted V199 spatial multistart was also not supported after its current
+825.0 live score. Its prior nine-cell gain over V191 was `$6,037/cell` with
+SE `$6,387`; V190's fertilizer core had stronger fresh evidence over V149
+(`$8,019/cell`, t `3.74`, W-L `14-4`). V202 production consequently
+removes only the unvalidated spatial second start and runs the V190 economic
+configuration. This is an explicit white-box rollback, not an identity branch
+or fitted response to a leaderboard opponent.
+
+### V203 bounded land timing and route reachability
+
+Let $q(s)$ be the number of currently owned quadrants. For an immediate land
+bundle $a_L$, V203 constructs two finite cash certificates: exact-first-output
+and full continuation. Each pays the named land/assets and current crew while
+preserving the standing service bridge. If either is feasible, the immediate
+action remains in the ordinary master; no forecasted best date can suppress
+it.
+
+Only when both endpoints are infeasible may a standing one-shot crop define a
+released-tile alternative. For each rule-derived release anchor $\tau$ and
+legal paid asset bundle $z$ on those exact released tiles, define
+
+$$
+W(s)=\max_{(\tau,z)\in D(s)}\min_{r\in R(s,z)}
+M\bigl(s,z,r\bigr),
+$$
+
+subject to dated cash, current service reserve, Fibonacci wages, order keys,
+feed, shed capacity and executable routes. The ownership-state exercise key
+is $(\mathrm{seat},q(s))$. A winning wait option can be exercised once for
+that state; it cannot recursively create a new right to wait after every
+replan. A change in $q(s)$ creates a different public state, and step zero
+clears all prior-episode exercise records.
+
+For later expansion, let $C^*$ be the finite positioned capital ray that has
+already beaten the no-land baseline under the same robust response set. The
+old route layer solved
+
+$$
+\max_{C\subseteq C^*}\;V_{\rm standalone}(C)+V(T_C),
+$$
+
+which could choose $C=\varnothing$ even though the upstream joint bundle
+$C^*$ was positive, making `BUY_LAND` unreachable. V203 instead routes every
+column of $C^*$ as mandatory within this candidate solve, while ordinary work
+may be displaced. It accepts only if a physical assignment exists and
+
+$$
+V_{\rm robust}(C^*)+V(T_{C^*})
+>
+V_{\rm robust}(\varnothing)+V(T_0),
+$$
+
+after recertifying the exact routed positions, cash path and paid responses.
+“Mandatory” therefore means indivisible candidate semantics, not guaranteed
+acceptance: route failure, cash failure or non-positive net value still
+returns IDLE/no-land.
+
+### V204 retained obligation and bounded online quantity frontier
+
+Let a successful V203 wait certificate at ownership count $q$ name the first
+eligible purchase day $d_e$. V204 retains only
+
+$$
+K=(\mathrm{seat},q,d_e).
+$$
+
+For $d<d_e$, $K$ removes only the same pure next-land proposal; unrelated mixed
+capital remains live. If the public ownership count changes, $K$ is deleted.
+For $d\ge d_e$, the live state is passed back through the ordinary late-land
+cash/service/route/response certificate even if the base capital master did
+not regenerate `BUY_LAND`. Failure returns the ordinary row and preserves the
+finite retry; success buys land and deletes $K$. Thus the original waiting
+choice cannot become an unbounded sequence of rolling waits, but its certified
+continuation also cannot vanish merely because the proposal set changed.
+
+To bound the expensive late-land solve, fix crop $c$ and enumerate the finite
+integer set $1\le n\le N_c(s)$. Let
+
+$$
+F_c=\{n:\text{at least one exact first-output/full-continuation endpoint is
+cash-and-service feasible}\}.
+$$
+
+Fibonacci hire blocks mean $F_c$ need not be monotone, so V204 partitions it
+into maximal contiguous regimes $I_{cj}=[\ell_{cj},u_{cj}]$. If
+$n^*_{cj}$ maximizes exact standalone schedule surplus within a regime, the
+quantities admitted to the expensive robust solve are
+
+$$
+Q_{cj}=\{\ell_{cj},u_{cj},n^*_{cj},n^*_{cj}-1\}\cap I_{cj}.
+$$
+
+Every legal public crop with nonempty $F_c$ retains at least one quantity, and
+all endpoint checks share one immutable current cash context. The frontier is
+only a deterministic screen: each $n\in Q_{cj}$ must still pass the unchanged
+finite Stackelberg certificate, exact current-task displacement charge,
+physical route construction, and routed-position recertification. Therefore
+it can omit a profitable interior quantity, but it cannot turn an infeasible
+or uncertified action into an emitted order.
