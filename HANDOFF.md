@@ -1,6 +1,6 @@
 # Kaggriculture white-box handoff
 
-Updated: 2026-09-04. This is the only current recovery document. The former
+Updated: 2026-09-13. This is the only current recovery document. The former
 long record is archived at `docs/HANDOFF_HISTORY_2026-09-02.md`; raw evidence
 stays in `logs/`, and equations/architecture stay in `MODEL.md`, `STRATEGY.md`
 and `WHITEBOX_ARCHITECTURE.md`.
@@ -38,7 +38,7 @@ foreground-only unless the user explicitly reverses this decision.
   `whitebox/versions/`.
 - Latest uploaded research bundle: `submission/whitebox_v204.py`, Kaggle
   submission **56007683**, SHA-256
-  `b7c43154f4053a9cf355096d61f982f5b5492d57f79fb8faa2c7f92028c9bcdd`.
+  `abaf9e076003d57d0a86c497a7f75cd143174d0cf92b7f95a0f6da4bb57b86cd`.
   Kaggle accepted it as `COMPLETE` on 2026-09-04. After its first completed
   ladder episode its publicScore is **698.8**; the initial 600 was only the
   registration rating. V203 submission 55978231 completed at **744.6** and
