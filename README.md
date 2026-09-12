@@ -12,21 +12,23 @@ replay、action tape、seed、episode id、对手身份、榜单排名或拟合�
 ## What ships
 
 - `whitebox/agent.py`：模块化生产入口 `_whitebox_entry`。
-- `whitebox/versions/v204_retained_land_commitment.py`：当前 V204 白盒包装器，
-  协同资本、任务/路线、现金流、市场和终局证书。
-- `submission/whitebox_v204.py`：由 `scripts/package_whitebox.py` 生成的单文件
-  提交包，只内嵌可审计的 `whitebox/` 与 `route/` 源码。
+- `whitebox/versions/v218_certified_shed_cluster.py`：当前 V218 白盒包装器，
+  在 V204 的协同资本、任务/路线、现金流、市场和终局证书上，加入仅由
+  公开 shed-access 几何与完整服务证书准入的动物中心化布局。
+- `submission/whitebox_v218_certified_shed_cluster.py`：由
+  `scripts/package_whitebox.py` 生成的单文件提交包，只内嵌可审计的
+  `whitebox/` 与 `route/` 源码。
 
-V204 是当前发布的白盒研究版本，并非已宣称晋级的胜率保证；V214/V215 仅作
-研究对照，不替换 V204 生产基线。
+V218 是当前发布的白盒研究版本，并非已宣称晋级的胜率保证；V204 保留为
+可复现基线，V214/V215 仅作研究对照。
 
 重新生成当前白盒提交包：
 
 ```bash
 /home/yilewang/kagg-env/bin/python scripts/package_whitebox.py \
-  --entry whitebox.versions.v204_retained_land_commitment \
-  --callable whitebox_v204_retained_land_commitment \
-  --output submission/whitebox_v204.py
+  --entry whitebox.versions.v218_certified_shed_cluster \
+  --callable whitebox_v218_certified_shed_cluster \
+  --output submission/whitebox_v218_certified_shed_cluster.py
 ```
 
 ## Historical tape-era measurements (not production)

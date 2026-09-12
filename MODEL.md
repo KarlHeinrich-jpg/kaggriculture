@@ -1,5 +1,15 @@
 # Kaggriculture — mathematical model
 
+> **V218 layout note (2026-09-13).** The latest local bundle is
+> `submission/whitebox_v218_certified_shed_cluster.py`. It retains V204's
+> white-box capital/route/value master and adds a finite challenger over the
+> public shed-access cells. Existing animals and structures stay fixed; a new
+> animal layout is retained only when current and future service routes plus
+> the unified cash/value certificate remain feasible. The central-cell
+> relocation manifest is the only execution path that can apply the selected
+> map. This is a geometry repair and has not been presented as a leaderboard
+> improvement.
+
 > **V204 live-research note (2026-09-04).** The current uploaded bundle is
 > `submission/whitebox_v204.py` (Kaggle 56007683). It retains a certified land
 > wait until its public eligibility state, then reopens the full land

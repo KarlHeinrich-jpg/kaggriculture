@@ -39,6 +39,11 @@ foreground-only unless the user explicitly reverses this decision.
 - Latest uploaded research bundle: `submission/whitebox_v204.py`, Kaggle
   submission **56007683**, SHA-256
   `abaf9e076003d57d0a86c497a7f75cd143174d0cf92b7f95a0f6da4bb57b86cd`.
+  The latest local candidate is `submission/whitebox_v218_certified_shed_cluster.py`.
+  V218 adds only a certified shed-access layout challenger: newly purchased
+  animals may use a central access cell only when the unchanged current/future
+  route and unified cash/value certificate accepts it. It does not open the
+  broad central-tile action space or use replay coordinates.
   Kaggle accepted it as `COMPLETE` on 2026-09-04. After its first completed
   ladder episode its publicScore is **698.8**; the initial 600 was only the
   registration rating. V203 submission 55978231 completed at **744.6** and
@@ -65,6 +70,22 @@ foreground-only unless the user explicitly reverses this decision.
   quantity frontier, as described below.
 - Preserve the dirty worktree. Many `whitebox/` files are currently untracked;
   never reset, overwrite or delete unrelated work.
+
+## V218 animal-layout repair
+
+V204 excluded the four public `paths.SHED_TILES` from productive placement, so
+even its distance-sorted animal columns could only stop on the outer ring. V218
+keeps that ordinary proposal space unchanged and enables
+`productive_shed_relocation=True` plus `service_cluster_layout=True`. The
+challenger enumerates only current-observation empty cells, keeps existing
+animals/structures fixed, preserves item counts and land orders, and accepts a
+layout only after the existing current-route, future-service, cash and finite
+public-response certificates pass. The relocation execution manifest applies
+the retained item/tile map on the next observation. A 108-game local screen
+against V204 was neutral (pool paired delta about **-$305**, no separable
+difference); a direct simulator trace placed the first cow on `(4,4)` and the
+next sheep on `(3,4)`, while V204's corresponding first animal was outside the
+center tile. This is a geometry correction, not a claim of leaderboard gain.
 
 ## V202 diagnosis and production decision
 

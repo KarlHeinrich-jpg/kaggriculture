@@ -519,6 +519,43 @@ class CapitalTests(unittest.TestCase):
             snap, (4, 4), "WHEAT",
         ))
 
+    def test_shed_cluster_admission_gives_new_animals_first_access(self):
+        """Central cells are offered to animals before fungible crops."""
+        live_cashflow = __import__("whitebox", fromlist=["cashflow"]).cashflow
+        snap = _snap(money=100000, empty=20)
+        snap.me.tiles[4][4] = None
+        if (4, 4) not in snap.me.empty:
+            snap.me.empty.append((4, 4))
+        snap.allow_productive_shed_tiles = True
+
+        slots = live_cashflow._available_slots(snap)
+        assigned = live_cashflow._assign_positions(
+            {"COW": 1, "WHEAT": 1}, slots,
+        )
+        self.assertEqual(assigned["COW"], [(4, 4)])
+        self.assertNotEqual(assigned["WHEAT"], [(4, 4)])
+        self.assertEqual(
+            min(capital.paths.dist_to_shed(pos) for pos in assigned["COW"]),
+            0,
+        )
+
+    def test_v218_wrapper_keeps_central_cells_certificate_gated(self):
+        from whitebox.versions import v218_certified_shed_cluster as v218
+
+        with mock.patch.object(
+                v218._agent, "variant_agent", return_value={}) as run:
+            v218.whitebox_v218_certified_shed_cluster({})
+        kwargs = run.call_args.kwargs
+        self.assertTrue(kwargs["productive_shed_relocation"])
+        self.assertTrue(kwargs["service_cluster_layout"])
+        self.assertEqual(
+            kwargs["execution_variant"],
+            "paid_fertilizer_productive_shed_relocation_manifest",
+        )
+        # The broad action-space switch remains closed; only the challenger
+        # can admit a shed-access cell after its full certificate.
+        self.assertFalse(kwargs.get("productive_shed_tiles", False))
+
     def test_engine_allows_crop_and_animal_on_shed_access_tile(self):
         from planner.simulate import Simulator
 

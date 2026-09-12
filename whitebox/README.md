@@ -4,11 +4,14 @@
 
 This section supersedes the tape-era status narrative retained below as
 historical experiment context. The current published executable white-box
-wrapper is `versions/v204_retained_land_commitment.py`, packaged as
-`submission/whitebox_v204.py`. V204 retains the V103/V102 constructive terminal
-route and adds a state-derived retained-land obligation; V214/V215 are
-research-only capacity variants. Historical gameplay comparison baselines are
-kept below for provenance, not as runtime dependencies.
+wrapper is `versions/v218_certified_shed_cluster.py`, packaged as
+`submission/whitebox_v218_certified_shed_cluster.py`. V218 retains the V204
+constructive terminal route and state-derived retained-land obligation, and
+adds a certified service-cluster challenger that can place newly purchased
+animals on the engine's public shed-access cells. V204 remains the reproducible
+comparison baseline; V214/V215 are research-only capacity variants. Historical
+gameplay comparison baselines are kept below for provenance, not as runtime
+dependencies.
 `versions/v86_observation_only_market.py` is V89's action-identical immutable
 comparison baseline, `versions/v76_deterministic_bundle_master.py` is the
 immutable gameplay comparison baseline,
