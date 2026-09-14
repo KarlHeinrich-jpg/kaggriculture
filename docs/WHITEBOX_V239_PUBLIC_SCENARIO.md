@@ -33,3 +33,17 @@ On the separate 30-game three-opponent holdout (`2, 3, 5, 7, 13`):
 
 The candidate remains a measured improvement, not a claim of universal
 victory.  The V228 modular architecture is retained for future experiments.
+
+## V250 sale-turnover promotion
+
+V250 applies a public market reserve multiplier of `0.60` to V239. This
+releases more accumulated output for sale while preserving the terminal
+liquidation rule.
+
+| candidate | wins | games | mean money margin |
+| --- | ---: | ---: | ---: |
+| V239 | 4 | 54 | -23,702 |
+| V250 | 4 | 54 | -22,960 |
+
+On the same 30-game holdout, V250 averages `-30,447`, versus V239's
+`-31,589`. The V250 bundle is the current submission candidate.
