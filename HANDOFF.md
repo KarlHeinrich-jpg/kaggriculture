@@ -1,5 +1,38 @@
 # Kaggriculture white-box handoff
 
+## Recovery update — 2026-09-18
+
+The resumed failure-driven campaign is complete for this foreground pass. The
+current best audited package is `submission/whitebox_v454.py` (entry
+`whitebox.versions.v454_public_weed_window_sale_cash`). On the fixed public
+pool of 9 opponents × seeds `11,47,101` × both seats it scores **18/54 =
+33.3%**, with all 54 episodes `DONE` and no runtime errors. It is the package
+to preserve and upload; no candidate reached 100%.
+
+The measured failure pattern remains joint route throughput, not one isolated
+threshold: against the hardest losses the candidate produced substantially
+fewer `WATER`, `HARVEST`, `PLANT`, `DIG`, and `SELL` operations than the public
+opponent, while often retaining a similar herd. The fixed evidence is in
+`analysis/failure_pool_v454.csv`, `analysis/official_trace_v454_54.json`, and
+`analysis/ab_v454_54.json`.
+
+The following observation-only candidates were audited, packaged, and rejected
+because they failed to beat V454 on the 12-game screen (results are recorded
+under `analysis/`): V517 (0/12), V518 (3/12), V519 (4/12), V520 (3/12), V521
+(0/12), V522 (2/12), V523 (0/12), V524 (2/12), V525 (1/12), V526 (1/12), V527
+(0/12), V528 (0/12), V529 (1/12), V530 (2/12), and V531 (2/12). The best
+looking route split still regressed on the balanced and multi-route opponents;
+therefore none is promoted. All runtime checks use only the live observation,
+public engine rules, and explicit seat-scoped certificates; no opponent name,
+seed, seat mapping, replay tape, fitted policy, or private opponent inventory
+is reachable from the submission bundle.
+
+The next recovery seam is a jointly certified task-assignment/value repair
+that increases productive route throughput without changing the opening
+capital queue. Do not promote a single-task priority, unconditional 14-hand,
+late-sale-cash, fourth-land, or late route-switch edit without a fresh 54-game
+comparison against V454.
+
 Updated: 2026-09-17. This is the only current recovery document. The former
 long record is archived at `docs/HANDOFF_HISTORY_2026-09-02.md`; raw evidence
 stays in `logs/`, and equations/architecture stay in `MODEL.md`, `STRATEGY.md`
