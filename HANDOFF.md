@@ -36,7 +36,9 @@ foreground-only unless the user explicitly reverses this decision.
 
 - The current public-white-box reference is
   `whitebox/versions/v361_public_wheat_rotation22.py`, packaged as
-  `submission/whitebox_v361.py`. Its declared evaluation is 13/54 absolute
+  `submission/whitebox_v361.py`. It was uploaded at the user's explicit request
+  on 2026-09-17 as Kaggle submission **56306983**; initial status was
+  `PENDING`. Its declared evaluation is 13/54 absolute
   wins (24.1%, mean final-money margin about -$16,699), 18/144 wins on the
   screen block (12.5%), and 13/180 wins on the untouched holdout (7.2%). The
   holdout regression forbids promotion or upload; V361 remains a research
