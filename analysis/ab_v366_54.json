@@ -1,0 +1,783 @@
+{
+  "candidate": "/home/yilewang/kaggriculture/submission/whitebox_v366.py",
+  "opponents": [
+    "kaggriculture-multi-route-farming-agent",
+    "kaggriculture-frontier-the-soil-remembers-rain",
+    "v111-8c4s-economic-core-premium-lead",
+    "kaggriculture-breaking-the-tie-2883-score",
+    "kaggriculture-rank-your-agent",
+    "kaggriculture-3000-socre",
+    "15-16-strict-future-v25-meta-reset",
+    "strong-barnyard-economist",
+    "kaggriculture-pure-architecture-2600-elo-v3"
+  ],
+  "overall": {
+    "errors": 0,
+    "games": 54,
+    "win_rate": 0.05555555555555555,
+    "wins": 3
+  },
+  "rows": [
+    {
+      "error": null,
+      "me": 72719.0,
+      "opp": 93702.0,
+      "opponent": "kaggriculture-multi-route-farming-agent",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 47493.0,
+      "opp": 81434.0,
+      "opponent": "kaggriculture-multi-route-farming-agent",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 89023.0,
+      "opp": 104981.0,
+      "opponent": "kaggriculture-multi-route-farming-agent",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 89616.0,
+      "opp": 107783.0,
+      "opponent": "kaggriculture-multi-route-farming-agent",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 111527.0,
+      "opp": 135494.0,
+      "opponent": "kaggriculture-multi-route-farming-agent",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 105153.0,
+      "opp": 137160.0,
+      "opponent": "kaggriculture-multi-route-farming-agent",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 86112.0,
+      "opp": 107587.0,
+      "opponent": "kaggriculture-frontier-the-soil-remembers-rain",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 78640.0,
+      "opp": 74192.0,
+      "opponent": "kaggriculture-frontier-the-soil-remembers-rain",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": true
+    },
+    {
+      "error": null,
+      "me": 47715.0,
+      "opp": 81503.0,
+      "opponent": "kaggriculture-frontier-the-soil-remembers-rain",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 34343.0,
+      "opp": 62537.0,
+      "opponent": "kaggriculture-frontier-the-soil-remembers-rain",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 72173.0,
+      "opp": 104358.0,
+      "opponent": "kaggriculture-frontier-the-soil-remembers-rain",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 98782.0,
+      "opp": 124930.0,
+      "opponent": "kaggriculture-frontier-the-soil-remembers-rain",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 78279.0,
+      "opp": 89406.0,
+      "opponent": "v111-8c4s-economic-core-premium-lead",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 80429.0,
+      "opp": 83898.0,
+      "opponent": "v111-8c4s-economic-core-premium-lead",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 28374.0,
+      "opp": 55560.0,
+      "opponent": "v111-8c4s-economic-core-premium-lead",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 88856.0,
+      "opp": 108287.0,
+      "opponent": "v111-8c4s-economic-core-premium-lead",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 60938.0,
+      "opp": 100250.0,
+      "opponent": "v111-8c4s-economic-core-premium-lead",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 61486.0,
+      "opp": 103316.0,
+      "opponent": "v111-8c4s-economic-core-premium-lead",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 76783.0,
+      "opp": 86748.0,
+      "opponent": "kaggriculture-breaking-the-tie-2883-score",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 80276.0,
+      "opp": 83824.0,
+      "opponent": "kaggriculture-breaking-the-tie-2883-score",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 28359.0,
+      "opp": 55191.0,
+      "opponent": "kaggriculture-breaking-the-tie-2883-score",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 87785.0,
+      "opp": 108046.0,
+      "opponent": "kaggriculture-breaking-the-tie-2883-score",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 57847.0,
+      "opp": 96966.0,
+      "opponent": "kaggriculture-breaking-the-tie-2883-score",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 56578.0,
+      "opp": 98883.0,
+      "opponent": "kaggriculture-breaking-the-tie-2883-score",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 76014.0,
+      "opp": 86299.0,
+      "opponent": "kaggriculture-rank-your-agent",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 80123.0,
+      "opp": 83555.0,
+      "opponent": "kaggriculture-rank-your-agent",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 34957.0,
+      "opp": 56394.0,
+      "opponent": "kaggriculture-rank-your-agent",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 66813.0,
+      "opp": 80689.0,
+      "opponent": "kaggriculture-rank-your-agent",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 63682.0,
+      "opp": 105108.0,
+      "opponent": "kaggriculture-rank-your-agent",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 63685.0,
+      "opp": 105108.0,
+      "opponent": "kaggriculture-rank-your-agent",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 77135.0,
+      "opp": 107325.0,
+      "opponent": "kaggriculture-3000-socre",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 51123.0,
+      "opp": 79940.0,
+      "opponent": "kaggriculture-3000-socre",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 92931.0,
+      "opp": 109648.0,
+      "opponent": "kaggriculture-3000-socre",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 89073.0,
+      "opp": 106447.0,
+      "opponent": "kaggriculture-3000-socre",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 83293.0,
+      "opp": 128042.0,
+      "opponent": "kaggriculture-3000-socre",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 81185.0,
+      "opp": 125543.0,
+      "opponent": "kaggriculture-3000-socre",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 84025.0,
+      "opp": 69454.0,
+      "opponent": "15-16-strict-future-v25-meta-reset",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": true
+    },
+    {
+      "error": null,
+      "me": 86136.0,
+      "opp": 73593.0,
+      "opponent": "15-16-strict-future-v25-meta-reset",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": true
+    },
+    {
+      "error": null,
+      "me": 41667.0,
+      "opp": 55309.0,
+      "opponent": "15-16-strict-future-v25-meta-reset",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 56309.0,
+      "opp": 64516.0,
+      "opponent": "15-16-strict-future-v25-meta-reset",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 93553.0,
+      "opp": 96344.0,
+      "opponent": "15-16-strict-future-v25-meta-reset",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 93782.0,
+      "opp": 97424.0,
+      "opponent": "15-16-strict-future-v25-meta-reset",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 56436.0,
+      "opp": 84916.0,
+      "opponent": "strong-barnyard-economist",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 56986.0,
+      "opp": 85839.0,
+      "opponent": "strong-barnyard-economist",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 44938.0,
+      "opp": 66002.0,
+      "opponent": "strong-barnyard-economist",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 44938.0,
+      "opp": 66002.0,
+      "opponent": "strong-barnyard-economist",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 110101.0,
+      "opp": 114754.0,
+      "opponent": "strong-barnyard-economist",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 102049.0,
+      "opp": 112136.0,
+      "opponent": "strong-barnyard-economist",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 55108.0,
+      "opp": 68888.0,
+      "opponent": "kaggriculture-pure-architecture-2600-elo-v3",
+      "seat": 0,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 74629.0,
+      "opp": 93863.0,
+      "opponent": "kaggriculture-pure-architecture-2600-elo-v3",
+      "seat": 1,
+      "seed": 11,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 28811.0,
+      "opp": 33928.0,
+      "opponent": "kaggriculture-pure-architecture-2600-elo-v3",
+      "seat": 0,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 27619.0,
+      "opp": 30299.0,
+      "opponent": "kaggriculture-pure-architecture-2600-elo-v3",
+      "seat": 1,
+      "seed": 47,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 52370.0,
+      "opp": 75462.0,
+      "opponent": "kaggriculture-pure-architecture-2600-elo-v3",
+      "seat": 0,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    },
+    {
+      "error": null,
+      "me": 50333.0,
+      "opp": 72222.0,
+      "opponent": "kaggriculture-pure-architecture-2600-elo-v3",
+      "seat": 1,
+      "seed": 101,
+      "status": [
+        "DONE",
+        "DONE"
+      ],
+      "tie": false,
+      "win": false
+    }
+  ],
+  "seeds": [
+    11,
+    47,
+    101
+  ]
+}

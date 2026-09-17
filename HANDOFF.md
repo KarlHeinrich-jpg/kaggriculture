@@ -1,6 +1,6 @@
 # Kaggriculture white-box handoff
 
-Updated: 2026-09-13. This is the only current recovery document. The former
+Updated: 2026-09-17. This is the only current recovery document. The former
 long record is archived at `docs/HANDOFF_HISTORY_2026-09-02.md`; raw evidence
 stays in `logs/`, and equations/architecture stay in `MODEL.md`, `STRATEGY.md`
 and `WHITEBOX_ARCHITECTURE.md`.
@@ -34,11 +34,62 @@ foreground-only unless the user explicitly reverses this decision.
 
 ## Current truth
 
+- The current public-white-box reference is
+  `whitebox/versions/v361_public_wheat_rotation22.py`, packaged as
+  `submission/whitebox_v361.py`. Its declared evaluation is 13/54 absolute
+  wins (24.1%, mean final-money margin about -$16,699), 18/144 wins on the
+  screen block (12.5%), and 13/180 wins on the untouched holdout (7.2%). The
+  holdout regression forbids promotion or upload; V361 remains a research
+  reference only.
+- V363--V369 tested three tempting scalar repairs and rejected all of them:
+  exact same-turn sale cash (V363, 6/54, about -$20,352), exact sale cash only
+  for seed/crew work (V364, 9/54, about -$18,136), cross-quadrant penalties of
+  16 and 4 (V365, 10/54, about -$19,931; V366, 3/54, about -$20,037), earlier
+  inventory banking (V368, 8/54, about -$16,449), and only lowering the banked
+  value trigger to the public $2,000 land price (V369, 12/54, about -$16,900).
+  Do not continue tuning sale-cash, quadrant-crossing or DROP thresholds.
+- The public engine credits each successful SELL at 100% of its quoted price,
+  but V363 showed that exposing all of that cash to the undifferentiated
+  capital queue changes day-1 purchases from three wheat seeds toward commodity
+  wheat and later collapses the wool path. Thus V361's 0.85 factor is an
+  accidental risk buffer, not a rule value. The next mechanism must separate
+  feed, seed, crew, sales and durable-capital obligations in a named committed-
+  work ledger, constructed from one immutable public snapshot, before exact
+  sale proceeds can be released safely. Shared-market opponent response must
+  be represented by a finite public-rule certificate rather than another cash
+  multiplier.
+- Recovery verification on 2026-09-17 passed all 429/429 unit tests, Python
+  compilation and `git diff --check`. The five focused sale-cash tests are in
+  `whitebox/test_public_sale_cash.py`; causal traces are
+  `analysis/trace_v361_cash_seed11.json` and
+  `analysis/trace_v363_cash_seed11.json`. No Kaggle upload was made.
+- A resumed failure-driven pass tested V370--V382 on the hardest measured
+  seed-101 block (nine public opponents, both seats, 18 games). None qualified
+  for the 54-game gate, so V361 remains the local reference. The tested seams
+  were crop-work priority (V370), 14/12-animal service caps (V371/V376), 14
+  hands (V372), optional cross-quadrant locality (V373), a visible crop-race
+  guard (V374), clustered 14-animal layout (V375), combined crop/animal guards
+  (V377), opening seed commitments (V378/V379), seed-before-feed queue ordering
+  (V380), committed WATER (V381), and early PLANT priority (V382). The best of
+  these small screens still won only 3/18; most materially reduced margin.
+  V383 is an untested diagnostic and must not be packaged, uploaded or treated
+  as evidence.
+- The public trace on seed 101 explains why these local fixes failed. V361
+  already reaches 53 live crops mid-season and then loses them through the
+  ordinary harvest/decay cycle; it also executes hundreds of CARE, fertilizer,
+  feed and movement actions. Promoting one task class changes the whole shared
+  market path and often reduces early hiring or output. The next valid research
+  step is therefore a single immutable `FlatSnapshot` plus a committed-work
+  ledger that jointly prices seed, plant, water, feed, sale and crew obligations
+  before emitting the queue. Do not resume isolated priority/count edits.
+
 - Production entry: `whitebox/agent.py`; research wrappers:
   `whitebox/versions/`.
-- Latest uploaded research bundle: `submission/whitebox_v204.py`, Kaggle
-  submission **56007683**, SHA-256
-  `abaf9e076003d57d0a86c497a7f75cd143174d0cf92b7f95a0f6da4bb57b86cd`.
+- Latest uploaded white-box bundle before the 2026-09-17 V361 handoff is
+  `submission/whitebox_v292_public_weed_priority3.py`, Kaggle submission
+  **56246208**, completed on 2026-09-15 with publicScore **767.6**. The older
+  V204 submission **56007683** remains a historical architecture reference,
+  not the latest upload.
   The latest local candidate is `submission/whitebox_v218_certified_shed_cluster.py`.
   V218 adds only a certified shed-access layout challenger: newly purchased
   animals may use a central access cell only when the unchanged current/future

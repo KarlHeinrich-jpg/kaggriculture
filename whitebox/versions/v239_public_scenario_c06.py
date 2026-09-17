@@ -172,6 +172,17 @@ SHED_CAPACITY = 100
 TRAVEL_COST = 8.0
 FEED_STOCK_DAYS = 3
 LAND_OPEN_DAYS = (5, 9)
+DROP_PRESSURE_THRESHOLD = 80
+DROP_UNIT_THRESHOLD = 20
+DROP_VALUE_THRESHOLD = 2500
+CASH_DROP_VALUE_THRESHOLD = 400
+QUADRANT_CROSS_COST = 0.0
+# Optional field work has a public continuity cost when it abandons the
+# worker's current quadrant.  The default is zero so the audited V361 policy
+# remains unchanged; research wrappers may enable the explicit challenger.
+OPTIONAL_QUADRANT_CROSS_COST = 0.0
+SALE_CASH_FACTOR = 0.85
+COMMITTED_WORK_SALE_CASH_FACTOR = 0.85
 PRIORITY_BONUS = {
     -1: 120_000.0,
     0: 100_000.0,
@@ -1180,10 +1191,10 @@ def _unit_actions(obs, config, farm, private, roles):
         )
         should_drop = (
             liquidation
-            or pressure >= 80
-            or cash_units >= 20
-            or cash_value >= 2500
-            or (cash_needed and cash_value >= 400)
+            or pressure >= DROP_PRESSURE_THRESHOLD
+            or cash_units >= DROP_UNIT_THRESHOLD
+            or cash_value >= DROP_VALUE_THRESHOLD
+            or (cash_needed and cash_value >= CASH_DROP_VALUE_THRESHOLD)
             or (
                 tuple(positions[index]) in _shed_tiles(board_size, tiles)
                 and not has_feed_mission
@@ -1230,10 +1241,20 @@ def _unit_actions(obs, config, farm, private, roles):
                     continue
 
             priority = int(mission["priority"])
+            cross_cost = 0.0
+            if (
+                mission["kind"] == "FIELD"
+                and _quadrant_of(position, board_size)
+                != _quadrant_of(target, board_size)
+            ):
+                cross_cost = QUADRANT_CROSS_COST
+                if priority >= 2:
+                    cross_cost += OPTIONAL_QUADRANT_CROSS_COST
             score = (
                 PRIORITY_BONUS.get(priority, -1000.0 * priority)
                 + float(mission["value"])
                 - TRAVEL_COST * distance
+                - cross_cost
             )
             pairs.append(
                 (
@@ -1346,6 +1367,20 @@ def _fib(index):
     for _ in range(index):
         a, b = b, a + b
     return a
+
+
+def _sale_cash_credit(proceeds):
+    """Cash available to later orders after an earlier sale in the queue."""
+    return max(0.0, float(proceeds)) * float(SALE_CASH_FACTOR)
+
+
+def _release_committed_sale_cash(money, gross_sale_proceeds):
+    """Release any extra engine-backed sale cash to seeds and crew only."""
+    extra_factor = max(
+        0.0,
+        float(COMMITTED_WORK_SALE_CASH_FACTOR) - float(SALE_CASH_FACTOR),
+    )
+    return float(money) + extra_factor * max(0.0, float(gross_sale_proceeds))
 
 
 def _pending_drop(private, field, capacity=SHED_CAPACITY):
@@ -1549,6 +1584,7 @@ def _market_actions(obs, config, farm, private, roles, field):
     summary = _survey(farm, private, roles, day)
     phase = _policy_phase(obs, farm, private, summary)
     orders = []
+    gross_sale_proceeds = 0.0
     occupancy = sum(max(0, int(value or 0)) for value in shed.values())
     shed_load = occupancy / float(max(1, shed_capacity))
     animal_pipeline = summary["animals"] + sum(
@@ -1584,7 +1620,8 @@ def _market_actions(obs, config, farm, private, roles, field):
         if len(orders) >= max_orders:
             break
         orders.append(["SELL", item, quantity])
-        money += 0.85 * proceeds
+        money += _sale_cash_credit(proceeds)
+        gross_sale_proceeds += proceeds
         occupancy = max(0, occupancy - quantity)
         shed[item] = max(0, int(shed.get(item, 0) or 0) - quantity)
         raw_inventory = market_inventory.get(item)
@@ -1716,6 +1753,10 @@ def _market_actions(obs, config, farm, private, roles, field):
             orders.append(["BUY_LAND"])
             money -= cost
 
+    # Animal, feed and land choices keep the conservative base cash buffer.
+    # Only after those choices are fixed may named seed/crew obligations use
+    # the remainder of the exact engine sale credit.
+    money = _release_committed_sale_cash(money, gross_sale_proceeds)
     needs = _seed_needs(obs, farm, private, roles)
     seed_reserve = 80 if day <= 4 else 150
     seed_order = (
