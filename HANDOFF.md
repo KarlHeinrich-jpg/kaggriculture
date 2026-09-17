@@ -7,7 +7,9 @@ current best audited package is `submission/whitebox_v454.py` (entry
 `whitebox.versions.v454_public_weed_window_sale_cash`). On the fixed public
 pool of 9 opponents × seeds `11,47,101` × both seats it scores **18/54 =
 33.3%**, with all 54 episodes `DONE` and no runtime errors. It is the package
-to preserve and upload; no candidate reached 100%.
+to preserve and upload; no candidate reached 100%. It was uploaded to Kaggle as
+submission **56315014** on 2026-09-17 23:06 UTC; the current API status is
+`PENDING`.
 
 The measured failure pattern remains joint route throughput, not one isolated
 threshold: against the hardest losses the candidate produced substantially
