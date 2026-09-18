@@ -53,11 +53,10 @@ opponent, seed, seat, or named scenario.
 
 ## Submission State
 
-This backup extends GitHub checkpoint `22ea237`.
-V684 passed real-engine file-path validation. A Kaggle upload was attempted on
-2026-09-18 but the API TLS connection failed during token introspection; no
-submission id was returned. Retry the same command when `api.kaggle.com` is
-reachable:
+This backup extends GitHub checkpoint `22ea237` (local commit `0e16240`).
+V684 passed real-engine file-path validation and was submitted to Kaggle on
+2026-09-18 as submission `56325563` (`PENDING` at handoff time; 4 daily
+submissions remained). If a retry is needed, use:
 
 ```bash
 /home/yilewang/kagg-env/bin/kaggle competitions submit \
