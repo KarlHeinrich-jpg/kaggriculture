@@ -2,19 +2,22 @@
 
 ## Recovery update — 2026-09-18
 
-The resumed failure-driven campaign is complete for this foreground pass. The
-current best audited package is `submission/whitebox_v546.py` (entry
-`whitebox.versions.v546_public_state_wheat_only`). On the fixed public pool of
-9 opponents × seeds `11,47,101` × both seats it scores **19/54 = 35.2%**, with
-all 54 episodes `DONE`, zero runtime errors, and a white-box audit pass. The
-recheck is `analysis/ab_v546_54_recheck.json`; the original failure report is
-`analysis/failure_pool_v546.csv`/`.json`. No candidate reached 100%.
+The resumed failure-driven campaign is still active: no candidate has reached
+100%. The current best audited checkpoint is `submission/whitebox_v623.py`
+(entry `whitebox.versions.v623_public_light_farmers_cow6`). On the fixed public
+pool of 9 opponents × seeds `11,47,101` × both seats it scores **20/54 =
+37.0%**, with all 54 episodes `DONE`, zero runtime errors, and a white-box
+audit pass. The full result is `analysis/ab_v623_54.json`; the prior V546
+recheck is `analysis/ab_v546_54_recheck.json`. V623 is a checkpoint, not a
+100% completion claim.
 
-V546 retains V454's conservative, three-quadrant policy and latches only a
-generic public wheat-heavy route signal. It does not use opponent names,
+V623 retains V546/V594's conservative three-quadrant policy and adds only
+current-observation certificates: a sticky low-wheat, animal-heavy public
+route, a public wool-versus-milk market gate, and a public
+`FARMERS_MARKET` composition adjustment. It does not use opponent names,
 identity mappings, seeds, seats, replays, action tapes, fitted weights, or
-private opponent inventory. The package is the version to preserve and upload;
-the prior Kaggle upload **56315014** remains the V454 upload from 2026-09-17.
+private opponent inventory. The package is the current checkpoint to preserve;
+it must not be described as a 100% solution.
 
 The measured failure pattern remains joint route throughput, not one isolated
 threshold: against the hardest losses the candidate produced substantially
@@ -34,7 +37,11 @@ public engine rules, and explicit seat-scoped certificates; no opponent name,
 seed, seat mapping, replay tape, fitted policy, or private opponent inventory
 is reachable from the submission bundle.
 
-The V549--V562 experiments tested public high-cow capacity, late hands, crop
+The V585--V625 continuation tested service-rate, herd-slot, worker-cap,
+public-market, sticky route, town-shop, herd-composition, crop-mix and task
+priority hypotheses. V623 is the only promoted checkpoint in this pass; the
+other experiments remain research artifacts under `analysis/`. The V549--V562
+experiments tested public high-cow capacity, late hands, crop
 recovery, weed priority, visible-supply liquidity, milk-demand herd floors and
 global matching. None exceeded V546 on the declared 12-game screen; they are
 research artifacts only. The next recovery seam is still a jointly certified
