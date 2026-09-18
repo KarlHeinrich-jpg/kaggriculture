@@ -149,6 +149,7 @@ TOTAL_DAYS = 30
 MAX_MARKET_ORDERS = 10
 MAX_HANDS = 12
 CORE_HERD_SEQUENCE = ("COW", "COW", "COW", "SHEEP")
+LIVESTOCK_TYPES = ("COW", "SHEEP")
 CORE_HERD = len(CORE_HERD_SEQUENCE)
 MID_HERD = 11
 TARGET_HERD = 15
@@ -181,6 +182,13 @@ QUADRANT_CROSS_COST = 0.0
 # worker's current quadrant.  The default is zero so the audited V361 policy
 # remains unchanged; research wrappers may enable the explicit challenger.
 OPTIONAL_QUADRANT_CROSS_COST = 0.0
+TARGET_STICKINESS_BONUS = 0.0
+SAME_TILE_COMPLETION_BONUS = 0.0
+MOVE_REVERSAL_PENALTY = 0.0
+GLOBAL_PAIR_MATCHING = False
+TERRITORY_MISMATCH_PENALTY = 0.0
+MISSION_PRESERVING_EXCHANGE = False
+MISSION_PRESERVING_GLOBAL_ASSIGNMENT = False
 SALE_CASH_FACTOR = 0.85
 COMMITTED_WORK_SALE_CASH_FACTOR = 0.85
 PRIORITY_BONUS = {
@@ -191,6 +199,16 @@ PRIORITY_BONUS = {
     3: 250.0,
     4: 0.0,
     5: -100.0,
+}
+
+_TARGET_CERTIFICATES = {}
+_MOMENTUM_CERTIFICATES = {}
+_TERRITORY_CERTIFICATES = {}
+_OPPOSITE_MOVE = {
+    "NORTH": "SOUTH",
+    "SOUTH": "NORTH",
+    "EAST": "WEST",
+    "WEST": "EAST",
 }
 
 
@@ -468,7 +486,7 @@ def _herd_targets(obs, farm, private, capacity):
     placed = _farm_animal_counts(farm)
     owned = {
         animal: placed[animal] + _private_item_total(private, animal)
-        for animal in ("COW", "SHEEP")
+        for animal in LIVESTOCK_TYPES
     }
     if day < HERD_EXPANSION_DAY:
         stage_target = CORE_HERD
@@ -487,12 +505,12 @@ def _herd_targets(obs, farm, private, capacity):
             else 0,
             owned[animal],
         )
-        for animal in ("COW", "SHEEP")
+        for animal in LIVESTOCK_TYPES
     }
     opponents = _opponent_animal_counts(obs)
     while sum(targets.values()) < target_total:
         animal = max(
-            ("COW", "SHEEP"),
+            LIVESTOCK_TYPES,
             key=lambda name: (
                 _livestock_score(
                     obs,
@@ -521,7 +539,7 @@ def _role_plan(obs, farm):
         if isinstance(tile, dict) and "animal" in tile and position not in active_slots:
             active_slots.append(position)
 
-    assigned = {"COW": 0, "SHEEP": 0}
+    assigned = {animal: 0 for animal in LIVESTOCK_TYPES}
     roles = {}
     core_sequence = CORE_HERD_SEQUENCE
     for index, position in enumerate(active_slots):
@@ -536,7 +554,7 @@ def _role_plan(obs, farm):
             animal = core_sequence[index]
         else:
             animal = max(
-                ("COW", "SHEEP"),
+                LIVESTOCK_TYPES,
                 key=lambda name: (
                     targets[name] - assigned[name],
                     _private_item_total(private, name),
@@ -1058,6 +1076,273 @@ def _terminal_feasible(position, target, tiles, actions_left):
     )
 
 
+def _mission_conflict_key(mission_index, mission, target, liquidation):
+    if mission["kind"] != "FIELD":
+        return ("MISSION", int(mission_index))
+    operation = mission["action"][0]
+    if (
+        liquidation
+        and operation in {"HARVEST", "COLLECT_FERTILIZER"}
+    ) or operation == "FERTILIZE":
+        return ("FIELD_OP", tuple(target), operation)
+    return ("FIELD", tuple(target))
+
+
+def _hungarian_min_cost(costs):
+    """Rectangular Hungarian assignment for rows <= columns."""
+    row_count = len(costs)
+    column_count = len(costs[0]) if costs else 0
+    if row_count == 0:
+        return []
+    potentials_rows = [0.0] * (row_count + 1)
+    potentials_columns = [0.0] * (column_count + 1)
+    matched_row = [0] * (column_count + 1)
+    previous_column = [0] * (column_count + 1)
+    for row in range(1, row_count + 1):
+        matched_row[0] = row
+        column = 0
+        minimum = [float("inf")] * (column_count + 1)
+        used = [False] * (column_count + 1)
+        while True:
+            used[column] = True
+            active_row = matched_row[column]
+            delta = float("inf")
+            next_column = 0
+            for candidate in range(1, column_count + 1):
+                if used[candidate]:
+                    continue
+                reduced = (
+                    float(costs[active_row - 1][candidate - 1])
+                    - potentials_rows[active_row]
+                    - potentials_columns[candidate]
+                )
+                if reduced < minimum[candidate]:
+                    minimum[candidate] = reduced
+                    previous_column[candidate] = column
+                if minimum[candidate] < delta:
+                    delta = minimum[candidate]
+                    next_column = candidate
+            for candidate in range(column_count + 1):
+                if used[candidate]:
+                    potentials_rows[matched_row[candidate]] += delta
+                    potentials_columns[candidate] -= delta
+                else:
+                    minimum[candidate] -= delta
+            column = next_column
+            if matched_row[column] == 0:
+                break
+        while True:
+            previous = previous_column[column]
+            matched_row[column] = matched_row[previous]
+            column = previous
+            if column == 0:
+                break
+    assignment = [-1] * row_count
+    for column in range(1, column_count + 1):
+        if matched_row[column] > 0:
+            assignment[matched_row[column] - 1] = column - 1
+    return assignment
+
+
+def _global_pair_order(pairs, missions, worker_count, liquidation):
+    """Order pairs with a one-step maximum-weight public matching first."""
+    if not pairs or worker_count <= 0:
+        return sorted(pairs)
+    pair_by_worker_group = {}
+    groups_by_worker = {worker: [] for worker in range(worker_count)}
+    for pair in pairs:
+        worker = int(pair[2])
+        mission_index = int(pair[3])
+        target = pair[6]
+        group = _mission_conflict_key(
+            mission_index, missions[mission_index], target, liquidation
+        )
+        key = (worker, group)
+        incumbent = pair_by_worker_group.get(key)
+        if incumbent is None or pair < incumbent:
+            pair_by_worker_group[key] = pair
+    for (worker, group), pair in pair_by_worker_group.items():
+        groups_by_worker[worker].append((float(-pair[0]), group))
+
+    candidate_groups = set()
+    per_worker_limit = max(8, min(16, worker_count + 2))
+    for worker in range(worker_count):
+        ranked = sorted(groups_by_worker[worker], reverse=True)
+        candidate_groups.update(group for _score, group in ranked[:per_worker_limit])
+    groups = sorted(candidate_groups, key=repr)
+    group_index = {group: index for index, group in enumerate(groups)}
+    dummy_count = worker_count
+    impossible = 1e12
+    costs = [
+        [impossible] * len(groups) + [0.0] * dummy_count
+        for _ in range(worker_count)
+    ]
+    for (worker, group), pair in pair_by_worker_group.items():
+        column = group_index.get(group)
+        if column is not None:
+            costs[worker][column] = float(pair[0])
+    selected = []
+    selected_ids = set()
+    for worker, column in enumerate(_hungarian_min_cost(costs)):
+        if not (0 <= column < len(groups)):
+            continue
+        pair = pair_by_worker_group.get((worker, groups[column]))
+        if pair is None or float(-pair[0]) <= 0:
+            continue
+        selected.append(pair)
+        selected_ids.add(id(pair))
+    selected.sort(key=lambda pair: int(pair[2]))
+    selected.extend(
+        pair
+        for pair in sorted(pairs)
+        if id(pair) not in selected_ids and float(-pair[0]) > 0
+    )
+    return selected
+
+
+def _exchange_selected_pairs(selected, pairs):
+    """Swap owners without changing the incumbent mission set."""
+    by_worker_mission = {
+        (int(pair[2]), int(pair[3])): pair
+        for pair in pairs
+    }
+    selected = list(selected)
+    for _ in range(max(1, len(selected))):
+        changed = False
+        for left in range(len(selected)):
+            for right in range(left + 1, len(selected)):
+                first = selected[left]
+                second = selected[right]
+                first_worker = int(first[2])
+                second_worker = int(second[2])
+                first_mission = int(first[3])
+                second_mission = int(second[3])
+                swapped_first = by_worker_mission.get(
+                    (second_worker, first_mission)
+                )
+                swapped_second = by_worker_mission.get(
+                    (first_worker, second_mission)
+                )
+                if swapped_first is None or swapped_second is None:
+                    continue
+                old_distance = int(first[1]) + int(second[1])
+                new_distance = (
+                    int(swapped_first[1]) + int(swapped_second[1])
+                )
+                if new_distance >= old_distance:
+                    continue
+                selected[left] = swapped_first
+                selected[right] = swapped_second
+                changed = True
+        if not changed:
+            break
+    return selected
+
+
+def _globally_reassign_selected_pairs(selected, pairs):
+    """Minimize travel for the already selected public mission set."""
+    selected = list(selected)
+    if len(selected) <= 1:
+        return selected
+    workers = sorted(int(pair[2]) for pair in selected)
+    missions = sorted(int(pair[3]) for pair in selected)
+    by_worker_mission = {
+        (int(pair[2]), int(pair[3])): pair
+        for pair in pairs
+    }
+    impossible = 10 ** 9
+    costs = []
+    for worker in workers:
+        row = []
+        for mission in missions:
+            pair = by_worker_mission.get((worker, mission))
+            row.append(
+                impossible
+                if pair is None
+                else int(pair[1]) * 1000 + worker
+            )
+        costs.append(row)
+    assignment = _hungarian_min_cost(costs)
+    reassigned = []
+    for row, column in enumerate(assignment):
+        if not (0 <= column < len(missions)):
+            return selected
+        pair = by_worker_mission.get((workers[row], missions[column]))
+        if pair is None:
+            return selected
+        reassigned.append(pair)
+    if sum(int(pair[1]) for pair in reassigned) >= sum(
+        int(pair[1]) for pair in selected
+    ):
+        return selected
+    return reassigned
+
+
+def _territory_owners(obs, farm, roles, positions):
+    """Assign contiguous public role zones to current workers for one day."""
+    if TERRITORY_MISMATCH_PENALTY <= 0 or not roles or not positions:
+        return {}
+    player = int((obs or {}).get("player", 0) or 0)
+    day = int((obs or {}).get("day", 0) or 0)
+    step = int((obs or {}).get("step", 0) or 0)
+    role_targets = tuple(sorted(tuple(target) for target in roles))
+    signature = (day, len(positions), role_targets)
+    cached = _TERRITORY_CERTIFICATES.get(player)
+    if (
+        cached is not None
+        and tuple(cached.get("signature", ())) == signature
+        and step > int(cached.get("step", -1))
+    ):
+        cached["step"] = step
+        return dict(cached.get("owners", {}) or {})
+
+    board_size = len(farm.get("tiles", []) or [])
+    center = ((board_size - 1) / 2.0, (board_size - 1) / 2.0)
+    ordered = sorted(
+        role_targets,
+        key=lambda target: (
+            math.atan2(target[1] - center[1], target[0] - center[0]),
+            _distance(target, center),
+            target[1],
+            target[0],
+        ),
+    )
+    worker_count = len(positions)
+    zones = [[] for _ in range(worker_count)]
+    for index, target in enumerate(ordered):
+        zone = min(worker_count - 1, index * worker_count // len(ordered))
+        zones[zone].append(target)
+    centroids = []
+    for zone in zones:
+        if not zone:
+            centroids.append(center)
+            continue
+        centroids.append((
+            sum(target[0] for target in zone) / float(len(zone)),
+            sum(target[1] for target in zone) / float(len(zone)),
+        ))
+    costs = [
+        [
+            abs(float(position[0]) - centroid[0])
+            + abs(float(position[1]) - centroid[1])
+            for centroid in centroids
+        ]
+        for position in positions
+    ]
+    assignment = _hungarian_min_cost(costs)
+    owners = {}
+    for worker, zone_index in enumerate(assignment):
+        if 0 <= zone_index < len(zones):
+            for target in zones[zone_index]:
+                owners[target] = worker
+    _TERRITORY_CERTIFICATES[player] = {
+        "signature": signature,
+        "step": step,
+        "owners": dict(owners),
+    }
+    return owners
+
+
 # Duplicate-target-aware field assignment
 
 def _unit_actions(obs, config, farm, private, roles):
@@ -1071,12 +1356,30 @@ def _unit_actions(obs, config, farm, private, roles):
     liquidation = actions_left <= LIQUIDATION_TURNS
 
     positions = [farm["farmer"], *(farm.get("hands", []) or [])]
+    territory_owners = _territory_owners(obs, farm, roles, positions)
     inventories = [dict(inv or {}) for inv in private.get("inventories", []) or []]
     while len(inventories) < len(positions):
         inventories.append({})
 
     summary = _survey(farm, private, roles, day)
     jobs = _field_jobs(obs, farm, private, roles, liquidation)
+    player = int(obs.get("player", 0) or 0)
+    certificate = _TARGET_CERTIFICATES.get(player)
+    if (
+        certificate is None
+        or int(certificate.get("day", -1)) != day
+        or step <= int(certificate.get("step", -1))
+    ):
+        certificate = {"day": day, "step": step, "targets": {}}
+    sticky_targets = dict(certificate.get("targets", {}) or {})
+    momentum = _MOMENTUM_CERTIFICATES.get(player)
+    if (
+        momentum is None
+        or int(momentum.get("day", -1)) != day
+        or step <= int(momentum.get("step", -1))
+    ):
+        momentum = {"day": day, "step": step, "moves": {}}
+    previous_moves = dict(momentum.get("moves", {}) or {})
     seed_budget = dict(private.get("seeds", {}) or {})
     actions = [["PASS"] for _ in positions]
 
@@ -1256,6 +1559,44 @@ def _unit_actions(obs, config, farm, private, roles):
                 - TRAVEL_COST * distance
                 - cross_cost
             )
+            if (
+                TARGET_STICKINESS_BONUS > 0
+                and mission["kind"] == "FIELD"
+                and tuple(target)
+                == tuple(sticky_targets.get(worker_index, (-1, -1)))
+            ):
+                score += float(TARGET_STICKINESS_BONUS)
+            if (
+                SAME_TILE_COMPLETION_BONUS > 0
+                and mission["kind"] == "FIELD"
+                and distance == 0
+                and priority > 0
+                and tuple(target)
+                == tuple(sticky_targets.get(worker_index, (-1, -1)))
+            ):
+                score += float(SAME_TILE_COMPLETION_BONUS)
+            if (
+                MOVE_REVERSAL_PENALTY > 0
+                and distance > 0
+                and priority > 0
+            ):
+                next_step = _bfs_first_step(
+                    tiles, positions[worker_index], target
+                )
+                previous = previous_moves.get(worker_index)
+                if (
+                    next_step
+                    and next_step[0] == _OPPOSITE_MOVE.get(previous)
+                ):
+                    score -= float(MOVE_REVERSAL_PENALTY)
+            if (
+                TERRITORY_MISMATCH_PENALTY > 0
+                and mission["kind"] == "FIELD"
+                and priority > 0
+                and territory_owners.get(tuple(target), worker_index)
+                != worker_index
+            ):
+                score -= float(TERRITORY_MISMATCH_PENALTY)
             pairs.append(
                 (
                     -score,
@@ -1271,9 +1612,17 @@ def _unit_actions(obs, config, farm, private, roles):
     used_workers = set()
     used_missions = set()
     used_targets = set()
+    selected_targets = {}
+    selected_field_pairs = []
     shed_capacity = int(_cfg(config, "shedCapacity", SHED_CAPACITY))
     drop_room = max(0, shed_capacity - summary["shed_load"])
-    for _, distance, worker_index, mission_index, _, _, target in sorted(pairs):
+    pair_order = (
+        _global_pair_order(pairs, missions, len(positions), liquidation)
+        if GLOBAL_PAIR_MATCHING
+        else sorted(pairs)
+    )
+    for pair in pair_order:
+        _, distance, worker_index, mission_index, _, _, target = pair
         if worker_index in used_workers or mission_index in used_missions:
             continue
         mission = missions[mission_index]
@@ -1349,9 +1698,74 @@ def _unit_actions(obs, config, farm, private, roles):
             seed_budget[plant_crop] -= 1
         if mission["kind"] == "FIELD":
             used_targets.add(target_key)
+            selected_targets[worker_index] = tuple(target)
+            selected_field_pairs.append(pair)
         actions[worker_index] = action
         used_workers.add(worker_index)
         used_missions.add(mission_index)
+
+    if (
+        MISSION_PRESERVING_EXCHANGE
+        or MISSION_PRESERVING_GLOBAL_ASSIGNMENT
+    ) and len(selected_field_pairs) > 1:
+        field_pairs = [
+            pair for pair in pairs
+            if missions[int(pair[3])]["kind"] == "FIELD"
+        ]
+        selected_field_pairs = (
+            _globally_reassign_selected_pairs(
+                selected_field_pairs, field_pairs
+            )
+            if MISSION_PRESERVING_GLOBAL_ASSIGNMENT
+            else _exchange_selected_pairs(selected_field_pairs, field_pairs)
+        )
+        selected_targets = {}
+        for pair in selected_field_pairs:
+            _, distance, worker_index, mission_index, _, _, target = pair
+            planned = missions[mission_index]["action"]
+            actions[worker_index] = (
+                list(planned)
+                if distance == 0
+                else _bfs_first_step(
+                    tiles, positions[worker_index], target
+                )
+            )
+            selected_targets[worker_index] = tuple(target)
+
+    if TARGET_STICKINESS_BONUS > 0 or SAME_TILE_COMPLETION_BONUS > 0:
+        live_targets = {
+            tuple(mission["target"])
+            for mission in missions
+            if mission["kind"] == "FIELD"
+        }
+        retained = {
+            int(worker_index): tuple(target)
+            for worker_index, target in sticky_targets.items()
+            if int(worker_index) < len(positions)
+            and tuple(target) in live_targets
+        }
+        claimed = set(selected_targets.values())
+        retained = {
+            worker_index: target
+            for worker_index, target in retained.items()
+            if target not in claimed or selected_targets.get(worker_index) == target
+        }
+        retained.update(selected_targets)
+        _TARGET_CERTIFICATES[player] = {
+            "day": day,
+            "step": step,
+            "targets": retained,
+        }
+    if MOVE_REVERSAL_PENALTY > 0:
+        _MOMENTUM_CERTIFICATES[player] = {
+            "day": day,
+            "step": step,
+            "moves": {
+                index: action[0]
+                for index, action in enumerate(actions)
+                if action and action[0] in _OPPOSITE_MOVE
+            },
+        }
 
     return {
         "farmer": actions[0] if actions else ["PASS"],
@@ -1667,7 +2081,7 @@ def _market_actions(obs, config, farm, private, roles, field):
         and left >= 8
     ):
         purchase_order = sorted(
-            ("COW", "SHEEP"),
+            LIVESTOCK_TYPES,
             key=lambda animal: (
                 _livestock_score(
                     obs,

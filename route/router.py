@@ -525,7 +525,18 @@ def joint_assign(tasks, units, shed_stock=None, fixed_owner=None,
     # A crew-size change is an event re-plan, not permission to make every
     # incumbent reverse direction. Preserve one still-live target per old
     # worker, then jointly optimise all remaining tasks and the new workers.
-    by_position = {tuple(t.pos): t for t in tasks}
+    by_position = {}
+    for task in tasks:
+        pos = tuple(task.pos)
+        incumbent = by_position.get(pos)
+        # A position can expose both a mandatory FEED core and its optional
+        # CARE/HARVEST suffix.  Prefix restoration must name the core when it
+        # is a current proof obligation; otherwise dict insertion order could
+        # lock the suffix and consume the route before the animal is fed.
+        if (incumbent is None
+                or (id(task) in required_ids
+                    and id(incumbent) not in required_ids)):
+            by_position[pos] = task
     locked = []
     for unit in sorted(units, key=lambda u: u.idx):
         positions = [tuple(pos) for pos, owner in fixed_owner.items()
@@ -533,7 +544,15 @@ def joint_assign(tasks, units, shed_stock=None, fixed_owner=None,
         if not positions:
             continue
         task = by_position.get(positions[0])
-        if task is None or (float(task.value) <= 0 and not task.mandatory):
+        if task is None:
+            continue
+        # A cached target is only execution continuity, not a survival
+        # commitment.  Once any live FEED core becomes required, release
+        # unrelated prefixes and let the ordinary required-first insertion
+        # rebuild the rest of the route around that core.
+        if required_ids and id(task) not in required_ids:
+            continue
+        if float(task.value) <= 0 and not task.mandatory:
             continue
         if not _resources_fit(selected + [task], shed_stock, cash_budget,
                               max_order_keys, selection_limits):
