@@ -1,0 +1,430 @@
+{
+  "opponent": "kaggriculture-multi-route-farming-agent",
+  "seed": 47,
+  "seat": 1,
+  "candidate_final": 44514.0,
+  "opponent_final": 52557.0,
+  "margin": -8043.0,
+  "status": [
+    "DONE",
+    "DONE"
+  ],
+  "totals": {
+    "pass_has:mission_used": 458,
+    "pass_has:seed_exhausted": 77,
+    "pass_has:target_conflict": 193,
+    "pass_has:unexplained_available": 59,
+    "pass_no_pair": 935,
+    "pass_only_mission_used": 199,
+    "pass_only_seed_exhausted": 1,
+    "pass_only_target_conflict": 16,
+    "pass_with_pair": 475,
+    "pass_workers": 1410
+  },
+  "by_day": {
+    "0": {
+      "calls": 24,
+      "jobs": 140,
+      "missions": 149,
+      "pairs": 1126,
+      "pass_has:mission_used": 56,
+      "pass_has:target_conflict": 14,
+      "pass_has:unexplained_available": 6,
+      "pass_no_pair": 75,
+      "pass_with_pair": 56,
+      "pass_workers": 131,
+      "workers": 228
+    },
+    "1": {
+      "calls": 24,
+      "jobs": 105,
+      "missions": 107,
+      "pairs": 628,
+      "pass_has:mission_used": 43,
+      "pass_has:seed_exhausted": 25,
+      "pass_has:target_conflict": 16,
+      "pass_no_pair": 96,
+      "pass_with_pair": 43,
+      "pass_workers": 139,
+      "workers": 185
+    },
+    "2": {
+      "calls": 24,
+      "jobs": 266,
+      "missions": 278,
+      "pairs": 1830,
+      "pass_has:mission_used": 44,
+      "pass_has:seed_exhausted": 30,
+      "pass_has:target_conflict": 16,
+      "pass_has:unexplained_available": 8,
+      "pass_no_pair": 55,
+      "pass_with_pair": 44,
+      "pass_workers": 99,
+      "workers": 207
+    },
+    "3": {
+      "calls": 24,
+      "jobs": 95,
+      "missions": 99,
+      "pairs": 535,
+      "pass_has:mission_used": 30,
+      "pass_has:target_conflict": 23,
+      "pass_has:unexplained_available": 6,
+      "pass_no_pair": 132,
+      "pass_with_pair": 30,
+      "pass_workers": 162,
+      "workers": 208
+    },
+    "4": {
+      "calls": 24,
+      "jobs": 359,
+      "missions": 374,
+      "pairs": 2749,
+      "pass_has:mission_used": 37,
+      "pass_has:target_conflict": 24,
+      "pass_has:unexplained_available": 11,
+      "pass_no_pair": 66,
+      "pass_with_pair": 37,
+      "pass_workers": 103,
+      "workers": 229
+    },
+    "5": {
+      "calls": 24,
+      "jobs": 145,
+      "missions": 147,
+      "pairs": 1228,
+      "pass_has:mission_used": 58,
+      "pass_has:seed_exhausted": 15,
+      "pass_has:target_conflict": 12,
+      "pass_has:unexplained_available": 12,
+      "pass_no_pair": 101,
+      "pass_with_pair": 58,
+      "pass_workers": 159,
+      "workers": 253
+    },
+    "6": {
+      "calls": 24,
+      "jobs": 249,
+      "missions": 259,
+      "pairs": 2014,
+      "pass_has:mission_used": 73,
+      "pass_has:seed_exhausted": 5,
+      "pass_has:target_conflict": 52,
+      "pass_has:unexplained_available": 14,
+      "pass_no_pair": 66,
+      "pass_with_pair": 75,
+      "pass_workers": 141,
+      "workers": 252
+    },
+    "7": {
+      "calls": 24,
+      "jobs": 647,
+      "missions": 657,
+      "pairs": 5591,
+      "pass_has:mission_used": 13,
+      "pass_has:seed_exhausted": 2,
+      "pass_has:target_conflict": 2,
+      "pass_has:unexplained_available": 2,
+      "pass_no_pair": 30,
+      "pass_with_pair": 14,
+      "pass_workers": 44,
+      "workers": 252
+    },
+    "8": {
+      "calls": 24,
+      "jobs": 696,
+      "missions": 713,
+      "pairs": 5729,
+      "pass_has:mission_used": 9,
+      "pass_no_pair": 22,
+      "pass_with_pair": 9,
+      "pass_workers": 31,
+      "workers": 252
+    },
+    "9": {
+      "calls": 24,
+      "jobs": 958,
+      "missions": 1002,
+      "pairs": 7914,
+      "pass_has:mission_used": 6,
+      "pass_has:target_conflict": 2,
+      "pass_no_pair": 8,
+      "pass_with_pair": 6,
+      "pass_workers": 14,
+      "workers": 250
+    },
+    "10": {
+      "calls": 24,
+      "jobs": 1163,
+      "missions": 1208,
+      "pairs": 13057,
+      "pass_has:mission_used": 9,
+      "pass_has:target_conflict": 4,
+      "pass_no_pair": 21,
+      "pass_with_pair": 9,
+      "pass_workers": 30,
+      "workers": 340
+    },
+    "11": {
+      "calls": 24,
+      "jobs": 1333,
+      "missions": 1347,
+      "pairs": 9786,
+      "pass_has:mission_used": 4,
+      "pass_has:target_conflict": 2,
+      "pass_no_pair": 4,
+      "pass_with_pair": 4,
+      "pass_workers": 8,
+      "workers": 250
+    },
+    "12": {
+      "calls": 24,
+      "jobs": 1675,
+      "missions": 1699,
+      "pairs": 15172,
+      "pass_has:mission_used": 3,
+      "pass_has:target_conflict": 2,
+      "pass_no_pair": 20,
+      "pass_with_pair": 3,
+      "pass_workers": 23,
+      "workers": 297
+    },
+    "13": {
+      "calls": 24,
+      "jobs": 1054,
+      "missions": 1060,
+      "pairs": 9432,
+      "pass_has:mission_used": 5,
+      "pass_no_pair": 26,
+      "pass_with_pair": 5,
+      "pass_workers": 31,
+      "workers": 295
+    },
+    "14": {
+      "calls": 24,
+      "jobs": 1381,
+      "missions": 1434,
+      "pairs": 12784,
+      "pass_has:mission_used": 4,
+      "pass_has:target_conflict": 1,
+      "pass_no_pair": 14,
+      "pass_with_pair": 5,
+      "pass_workers": 19,
+      "workers": 297
+    },
+    "15": {
+      "calls": 24,
+      "jobs": 1365,
+      "missions": 1403,
+      "pairs": 11519,
+      "pass_has:mission_used": 6,
+      "pass_has:target_conflict": 6,
+      "pass_no_pair": 23,
+      "pass_with_pair": 7,
+      "pass_workers": 30,
+      "workers": 294
+    },
+    "16": {
+      "calls": 24,
+      "jobs": 1680,
+      "missions": 1706,
+      "pairs": 15240,
+      "pass_has:mission_used": 7,
+      "pass_has:target_conflict": 1,
+      "pass_no_pair": 6,
+      "pass_with_pair": 7,
+      "pass_workers": 13,
+      "workers": 295
+    },
+    "17": {
+      "calls": 24,
+      "jobs": 2235,
+      "missions": 2316,
+      "pairs": 17641,
+      "pass_no_pair": 7,
+      "pass_workers": 7,
+      "workers": 295
+    },
+    "18": {
+      "calls": 24,
+      "jobs": 1539,
+      "missions": 1584,
+      "pairs": 13309,
+      "pass_has:mission_used": 7,
+      "pass_has:target_conflict": 15,
+      "pass_no_pair": 18,
+      "pass_with_pair": 18,
+      "pass_workers": 36,
+      "workers": 295
+    },
+    "19": {
+      "calls": 24,
+      "jobs": 1820,
+      "missions": 1824,
+      "pairs": 15707,
+      "pass_has:mission_used": 5,
+      "pass_no_pair": 11,
+      "pass_with_pair": 5,
+      "pass_workers": 16,
+      "workers": 295
+    },
+    "20": {
+      "calls": 24,
+      "jobs": 1764,
+      "missions": 1848,
+      "pairs": 16111,
+      "pass_has:mission_used": 3,
+      "pass_no_pair": 1,
+      "pass_with_pair": 3,
+      "pass_workers": 4,
+      "workers": 295
+    },
+    "21": {
+      "calls": 24,
+      "jobs": 1614,
+      "missions": 1641,
+      "pairs": 13651,
+      "pass_has:mission_used": 1,
+      "pass_has:target_conflict": 1,
+      "pass_no_pair": 14,
+      "pass_with_pair": 2,
+      "pass_workers": 16,
+      "workers": 295
+    },
+    "22": {
+      "calls": 24,
+      "jobs": 1171,
+      "missions": 1175,
+      "pairs": 10532,
+      "pass_has:mission_used": 8,
+      "pass_no_pair": 16,
+      "pass_with_pair": 8,
+      "pass_workers": 24,
+      "workers": 296
+    },
+    "23": {
+      "calls": 24,
+      "jobs": 1372,
+      "missions": 1413,
+      "pairs": 12067,
+      "pass_has:mission_used": 3,
+      "pass_no_pair": 9,
+      "pass_with_pair": 3,
+      "pass_workers": 12,
+      "workers": 295
+    },
+    "24": {
+      "calls": 24,
+      "jobs": 1676,
+      "missions": 1759,
+      "pairs": 14156,
+      "pass_has:mission_used": 3,
+      "pass_no_pair": 9,
+      "pass_with_pair": 3,
+      "pass_workers": 12,
+      "workers": 295
+    },
+    "25": {
+      "calls": 24,
+      "jobs": 1645,
+      "missions": 1677,
+      "pairs": 14675,
+      "pass_has:mission_used": 1,
+      "pass_no_pair": 10,
+      "pass_with_pair": 1,
+      "pass_workers": 11,
+      "workers": 295
+    },
+    "26": {
+      "calls": 24,
+      "jobs": 1709,
+      "missions": 1755,
+      "pairs": 14472,
+      "pass_has:mission_used": 1,
+      "pass_with_pair": 1,
+      "pass_workers": 1,
+      "workers": 294
+    },
+    "27": {
+      "calls": 24,
+      "jobs": 866,
+      "missions": 922,
+      "pairs": 6806,
+      "pass_has:mission_used": 5,
+      "pass_no_pair": 18,
+      "pass_with_pair": 5,
+      "pass_workers": 23,
+      "workers": 251
+    },
+    "28": {
+      "calls": 24,
+      "jobs": 738,
+      "missions": 743,
+      "pairs": 5130,
+      "pass_has:mission_used": 10,
+      "pass_no_pair": 25,
+      "pass_with_pair": 10,
+      "pass_workers": 35,
+      "workers": 229
+    },
+    "29": {
+      "calls": 23,
+      "jobs": 289,
+      "missions": 366,
+      "pairs": 2000,
+      "pass_has:mission_used": 4,
+      "pass_no_pair": 32,
+      "pass_with_pair": 4,
+      "pass_workers": 36,
+      "workers": 196
+    }
+  },
+  "by_operation": {
+    "BUILD_PASTURE": {
+      "mission_used": 13,
+      "pass_pairs": 30,
+      "unexplained_available": 17
+    },
+    "CARE": {
+      "mission_used": 158,
+      "pass_pairs": 438,
+      "target_conflict": 213,
+      "unexplained_available": 67
+    },
+    "COLLECT_FERTILIZER": {
+      "mission_used": 240,
+      "pass_pairs": 464,
+      "target_conflict": 108,
+      "unexplained_available": 116
+    },
+    "DIG": {
+      "mission_used": 14,
+      "pass_pairs": 14
+    },
+    "FEED": {
+      "mission_used": 8,
+      "pass_pairs": 8
+    },
+    "HARVEST": {
+      "mission_used": 60,
+      "pass_pairs": 70,
+      "unexplained_available": 10
+    },
+    "PICKUP": {
+      "mission_used": 66,
+      "pass_pairs": 86,
+      "unexplained_available": 20
+    },
+    "PLANT": {
+      "mission_used": 283,
+      "pass_pairs": 485,
+      "seed_exhausted": 147,
+      "unexplained_available": 55
+    },
+    "WATER": {
+      "mission_used": 678,
+      "pass_pairs": 860,
+      "unexplained_available": 182
+    }
+  }
+}

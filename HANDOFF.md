@@ -1,59 +1,66 @@
-# Kaggriculture white-box handoff
+# Kaggriculture White-Box Handoff
 
-Updated: 2026-09-18. The 100% pool target is **not complete**.
+Updated: 2026-09-18. The 100% opponent-pool target is not complete.
 
-## Best verified model
+## Best Version
 
-- **V684**: `whitebox/versions/v684_public_recertified_nonfarmers_light.py`
-- Callable: `whitebox_v684_public_recertified_nonfarmers_light`
+- Source: `whitebox/versions/v684_public_recertified_nonfarmers_light.py`
 - Submission: `submission/whitebox_v684.py`
+- Callable: `whitebox_v684_public_recertified_nonfarmers_light`
 - SHA-256: `e91f993e23a0e952bb1dd8d428be7c9aafd3175115438ecf48cdb8fe059c08ec`
-- Hard-18: **10/18**, mean margin **-$3,893.67**.
-- Full-54: **22/54**, mean margin **-$11,029.93**, zero errors.
-- Evidence: `analysis/ab_v684_screen18.json`, `analysis/ab_v684_54.json`.
+- Hard-18: `10/18`, mean margin `-3,893.67`
+- Full-54: `22/54`, mean margin `-11,029.93`, zero runtime errors
+- Keep V684 unless a candidate first ties/beats hard-18 and then improves full-54.
 
-Keep V684 unless a candidate first beats/ties its hard-18 result and then
-improves the full 54 games.
+Pool: `route/tournament.py::REFS` (9 public opponents, seeds `11/47/101`,
+both seats = 54 games).
 
-## Runtime constraints
+## White-Box Contract
 
-- Use only the current observation, public engine rules, and our own explicit,
-  inspectable state/certificates.
-- No opponent identity/source, seed/seat routing, replay/tape, compressed
-  trajectory, hidden fitting, imitation, or opponent-private inventory.
-- Own at most **three total quadrants**.
-- Audit formal candidates with `scripts/audit_whitebox_runtime.py`.
-- Preserve the dirty worktree; do not reset, checkout, or clean unrelated work.
-- Python: `/home/yilewang/kagg-env/bin/python`; missing `pyspiel` is harmless.
+Use only the current observation, public engine rules, and explicit inspectable
+state/certificates. Do not use opponent identity, seed/seat routing,
+replays/tapes, compressed trajectories, hidden fitting, imitation, or private
+opponent inventory. Keep the total owned quadrants at most three.
 
-## Latest rejected candidates
+Audit every formal candidate with:
 
-- **V700**: post-HARVEST CARE. Multi-route **0/6**, mean **-$14,952.83**.
-  CARE/milk improved, but displaced higher-value crop work.
-- **V701**: early HARVEST when two cow outputs are held. Multi-route **0/6**;
-  hard-18 **8/18**. Invalid premise: cow capacity is six, so two is not urgent.
-- **V702**: V701 only in public `default` mode. Hard-18 **10/18**, mean
-  **-$3,839.11**; full-54 **22/54**, mean **-$11,386.00**. Rejected because its
-  full-pool margin is worse than V684.
-- **V703**: idle-cash early land purchase. Multi-route **0/6**; hard-18
-  **8/18**. The 300/500 land reserve is needed for the later capital chain.
+```bash
+/home/yilewang/kagg-env/bin/python scripts/audit_whitebox_runtime.py \
+  --entry whitebox.versions.<module> --callable <callable>
+```
 
-All four candidates passed audit/package checks. Evidence is in
-`analysis/ab_v700_multi6.json` through `analysis/ab_v703_screen18.json`, plus
-`analysis/ab_v702_54.json`.
+Missing `pyspiel` is harmless. Preserve unrelated dirty work; never reset,
+checkout, or clean the worktree.
 
-## Resume direction
+## Current Diagnosis
 
-Diagnose why V684's route solver still emits many PASS actions while public,
-positive-value work exists. Start with multi-route seeds 11/47/101 and
-frontier seed 101 using `analysis/official_trace_v684_structural18.json`.
+Rejected V700-V707 action-level repairs changed public state/RNG paths and
+regressed paired margins. V684's main loss is not same-tile contention or
+carry-free filtering: the old matcher repeatedly assigns workers to targets
+that cannot meet the current day's `latest_hour`, producing many PASS turns.
+The public mode switch (`default` -> `light` -> `default`) is also a likely
+source of herd/service discontinuity, especially around seed 47 day 10-11.
 
-Instrument `_v464.router.plan_day` to compare live/selected/undone tasks,
-undone reasons and carry ownership, worker route costs/budgets, PASS actions,
-and repeated PICKUP/DROP. Check same-tile FEED/CARE/HARVEST costing, shared
-stock constraints, carry-blocked idle refills, and duplicated pickup/bank-tail
-costs. Any repair must be a general current-task feasibility rule, never a
-scenario, seed, opponent, or action-sequence route.
+Diagnostics:
 
-The declared pool is `route/tournament.py::REFS`: nine opponents, seeds
-11/47/101, both seats (54 games).
+- `scripts/diagnose_v684_router_passes.py`
+- `scripts/diagnose_v684_matcher_passes.py`
+- `analysis/diag_v684_*json`
+
+Next work should test a general public-state feasibility/deadline rule and
+mode-transition certificate on hard-18 first, then full-54. Never branch on
+opponent, seed, seat, or named scenario.
+
+## Submission State
+
+This backup extends GitHub checkpoint `22ea237`.
+V684 passed real-engine file-path validation. A Kaggle upload was attempted on
+2026-09-18 but the API TLS connection failed during token introspection; no
+submission id was returned. Retry the same command when `api.kaggle.com` is
+reachable:
+
+```bash
+/home/yilewang/kagg-env/bin/kaggle competitions submit \
+  -c kaggriculture -f submission/whitebox_v684.py \
+  -m 'V684 certified public-state white-box baseline'
+```

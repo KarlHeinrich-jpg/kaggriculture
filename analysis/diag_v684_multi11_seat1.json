@@ -1,0 +1,84 @@
+{
+  "opponent": "kaggriculture-multi-route-farming-agent",
+  "seed": 11,
+  "seat": 1,
+  "candidate_final": 54115.0,
+  "opponent_final": 70724.0,
+  "margin": -16609.0,
+  "status": [
+    "DONE",
+    "DONE"
+  ],
+  "totals": {
+    "pass_turns_with_live_call": 405,
+    "pass_turns_with_positive_undone": 173,
+    "pass_unit_turns": 2752,
+    "positive_undone_tasks": 776
+  },
+  "by_day": {},
+  "by_operation": {
+    "DIG|carry=-": {
+      "already_carried": 14,
+      "seen": 14,
+      "stock_ok": 14,
+      "strict_feasible": 0,
+      "time_ok": 0
+    },
+    "FERTILIZE+HARVEST|carry=FERTILIZER:1": {
+      "already_carried": 0,
+      "seen": 26,
+      "stock_ok": 0,
+      "strict_feasible": 0,
+      "time_ok": 16
+    },
+    "FERTILIZE+WATER|carry=-": {
+      "already_carried": 21,
+      "seen": 21,
+      "stock_ok": 21,
+      "strict_feasible": 0,
+      "time_ok": 0
+    },
+    "FERTILIZE+WATER|carry=FERTILIZER:1": {
+      "already_carried": 0,
+      "seen": 536,
+      "stock_ok": 0,
+      "strict_feasible": 0,
+      "time_ok": 523
+    },
+    "HARVEST|carry=-": {
+      "already_carried": 60,
+      "seen": 60,
+      "stock_ok": 60,
+      "strict_feasible": 0,
+      "time_ok": 0
+    },
+    "PLACE|carry=COW:1": {
+      "already_carried": 0,
+      "seen": 741,
+      "stock_ok": 0,
+      "strict_feasible": 0,
+      "time_ok": 435
+    },
+    "PLACE|carry=SHEEP:1": {
+      "already_carried": 0,
+      "seen": 11,
+      "stock_ok": 0,
+      "strict_feasible": 0,
+      "time_ok": 11
+    },
+    "PLANT|carry=-": {
+      "already_carried": 506,
+      "seen": 506,
+      "stock_ok": 506,
+      "strict_feasible": 0,
+      "time_ok": 0
+    },
+    "WATER|carry=-": {
+      "already_carried": 1065,
+      "seen": 1065,
+      "stock_ok": 1065,
+      "strict_feasible": 0,
+      "time_ok": 0
+    }
+  }
+}
