@@ -1,80 +1,59 @@
 # Kaggriculture white-box handoff
 
-Updated: 2026-09-18. Paused for a new Codex window. The 100% target is **not complete**.
+Updated: 2026-09-18. The 100% pool target is **not complete**.
 
-## Current best: V684
+## Best verified model
 
-- Source: `whitebox/versions/v684_public_recertified_nonfarmers_light.py`
+- **V684**: `whitebox/versions/v684_public_recertified_nonfarmers_light.py`
 - Callable: `whitebox_v684_public_recertified_nonfarmers_light`
 - Submission: `submission/whitebox_v684.py`
 - SHA-256: `e91f993e23a0e952bb1dd8d428be7c9aafd3175115438ecf48cdb8fe059c08ec`
-- Hard-18: **10/18**; full-54: **22/54**, mean margin **-$11,029.93**; zero errors.
+- Hard-18: **10/18**, mean margin **-$3,893.67**.
+- Full-54: **22/54**, mean margin **-$11,029.93**, zero errors.
 - Evidence: `analysis/ab_v684_screen18.json`, `analysis/ab_v684_54.json`.
 
-Do not replace V684 unless a candidate beats 10/18 (or ties with a materially
-better paired margin) and then improves the full 54 games.
+Keep V684 unless a candidate first beats/ties its hard-18 result and then
+improves the full 54 games.
 
-## Hard constraints
+## Runtime constraints
 
-- Runtime may use only the current observation, public engine rules, and our
-  own explicit, inspectable state/certificates.
+- Use only the current observation, public engine rules, and our own explicit,
+  inspectable state/certificates.
 - No opponent identity/source, seed/seat routing, replay/tape, compressed
-  trajectory, hidden fitted parameters, private inventory, or imitation.
+  trajectory, hidden fitting, imitation, or opponent-private inventory.
 - Own at most **three total quadrants**.
-- Audit every formal candidate with `scripts/audit_whitebox_runtime.py`.
-- Preserve the dirty worktree: never reset, checkout, delete, or overwrite
-  unrelated experiments.
+- Audit formal candidates with `scripts/audit_whitebox_runtime.py`.
+- Preserve the dirty worktree; do not reset, checkout, or clean unrelated work.
+- Python: `/home/yilewang/kagg-env/bin/python`; missing `pyspiel` is harmless.
 
-## Latest diagnosis
+## Latest rejected candidates
 
-- Multi-route seed 11: V684 hired 323 times for about 4,808 cost; the opponent
-  hired 277 times for about 3,683. Earlier hire trimming regressed, so the gap
-  is not simply too many workers.
-- The engine resets all workers to the warehouse each day, and maturity/output
-  does not advance within a day. This falsifies the prior cross-day
-  pre-positioning direction.
-- V684/opponent effective animal work in that matchup: cow FEED 147/187, CARE
-  54/186, HARVEST 36/71, milk 108/237; wool was 174/164. The key gap is the
-  cow/milk service chain, not sheep count.
-- CARE was capacity-blocked 271 times for cows (22 also had HARVEST) and 395
-  times for sheep (all 395 also had HARVEST). The public-rule closure is
-  `FEED -> HARVEST -> CARE`: harvest frees capacity, then care builds the next
-  production bonus.
+- **V700**: post-HARVEST CARE. Multi-route **0/6**, mean **-$14,952.83**.
+  CARE/milk improved, but displaced higher-value crop work.
+- **V701**: early HARVEST when two cow outputs are held. Multi-route **0/6**;
+  hard-18 **8/18**. Invalid premise: cow capacity is six, so two is not urgent.
+- **V702**: V701 only in public `default` mode. Hard-18 **10/18**, mean
+  **-$3,839.11**; full-54 **22/54**, mean **-$11,386.00**. Rejected because its
+  full-pool margin is worse than V684.
+- **V703**: idle-cash early land purchase. Multi-route **0/6**; hard-18
+  **8/18**. The 300/500 land reserve is needed for the later capital chain.
 
-## Latest candidates
+All four candidates passed audit/package checks. Evidence is in
+`analysis/ab_v700_multi6.json` through `analysis/ab_v703_screen18.json`, plus
+`analysis/ab_v702_54.json`.
 
-- V698: FARMERS light herd changed to 7 cows. Audit/package passed; multi-route
-  0/6, mean margin -16,525. Rejected.
-- V699: same test with 8 cows. Audit/package passed; multi-route 0/6, mean
-  margin -17,209. Rejected.
-- V700: **not yet audited, packaged, or evaluated**. Source:
-  `whitebox/versions/v700_public_post_harvest_animal_care.py`. In FARMERS light,
-  day <= 27, it adds public-state CARE work when current jobs already contain
-  animal HARVEST, and orders same-tile work as
-  `FEED -> HARVEST -> CARE -> COLLECT_FERTILIZER`. It rebuilds from the current
-  observation every turn and stores no future route/action tape.
+## Resume direction
 
-## Resume here
+Diagnose why V684's route solver still emits many PASS actions while public,
+positive-value work exists. Start with multi-route seeds 11/47/101 and
+frontier seed 101 using `analysis/official_trace_v684_structural18.json`.
 
-```bash
-/home/yilewang/kagg-env/bin/python scripts/audit_whitebox_runtime.py \
-  --entry whitebox.versions.v700_public_post_harvest_animal_care \
-  --callable whitebox_v700_public_post_harvest_animal_care
-
-/home/yilewang/kagg-env/bin/python scripts/package_whitebox.py \
-  --entry whitebox.versions.v700_public_post_harvest_animal_care \
-  --callable whitebox_v700_public_post_harvest_animal_care \
-  --output submission/whitebox_v700.py
-
-/home/yilewang/kagg-env/bin/python scripts/evaluate_whitebox_pool.py \
-  --candidate submission/whitebox_v700.py \
-  --opponents kaggriculture-multi-route-farming-agent \
-  --seeds 11 47 101 --workers 6 --output analysis/ab_v700_multi6.json
-```
-
-If V700 does not improve all three seeds, inspect the public mechanisms in
-V460 (multi seed 11 margins -1,060/-1,303) and V665 (seed 101 margins
--11,890/-7,888); never route by seed or opponent identity.
+Instrument `_v464.router.plan_day` to compare live/selected/undone tasks,
+undone reasons and carry ownership, worker route costs/budgets, PASS actions,
+and repeated PICKUP/DROP. Check same-tile FEED/CARE/HARVEST costing, shared
+stock constraints, carry-blocked idle refills, and duplicated pickup/bank-tail
+costs. Any repair must be a general current-task feasibility rule, never a
+scenario, seed, opponent, or action-sequence route.
 
 The declared pool is `route/tournament.py::REFS`: nine opponents, seeds
-11/47/101, both seats (54 games). `No module named pyspiel` is harmless.
+11/47/101, both seats (54 games).
